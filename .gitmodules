@@ -52,3 +52,6 @@
 [submodule "src/external/dlmalloc"]
 	path = src/external/dlmalloc
 	url = https://github.com/Vita3K/dlmalloc
+[submodule "src/external/ScePrintf"]
+	path = src/external/ScePrintf
+	url = https://github.com/Vita3k/ScePrintf

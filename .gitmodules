@@ -52,3 +52,6 @@
 [submodule "src/external/dlmalloc"]
 	path = src/external/dlmalloc
 	url = https://github.com/Vita3K/dlmalloc
+[submodule "src/external/pugixml"]
+	path = src/external/pugixml
+	url = https://github.com/zeux/pugixml

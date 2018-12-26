@@ -38,7 +38,7 @@ bool ShouldRenderLivearea(HostState &host) {
     if ((!host.gui.livearea.cached) || (host.gui.game_selector.selected_title_id != host.gui.livearea.last_cached_id)) {
         host.gui.livearea.last_cached_id = host.gui.game_selector.selected_title_id;
 
-        const std::string livearea_content_dir = host.pref_path + "ux0\\app\\" + host.gui.livearea.last_cached_id + "\\sce_sys\\livearea\contents\\";
+        const std::string livearea_content_dir = host.pref_path + "ux0\\app\\" + host.gui.livearea.last_cached_id + "\\sce_sys\\livearea\\contents\\";
 
         // We should see if we can get the template file
         const std::string livearea_template_xml = livearea_content_dir + "template.xml";
@@ -57,7 +57,8 @@ bool ShouldRenderLivearea(HostState &host) {
             return false;
         }
 
-        host.gui.livearea.background_path = livearea_node.child("livearea-background").attribute("image").value();
+        host.gui.livearea.background_path = livearea_node.child("livearea-background").child("image").
+            child_value();
 
         host.gui.livearea.cached = true;
         host.gui.livearea.should_render = true;

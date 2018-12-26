@@ -295,7 +295,7 @@ SceUID open_file(IOState &io, const std::string &path, int flags, const char *pr
         const FilePtr file(fopen(file_path.c_str(), open_mode), delete_file);
 #endif
         if (!file) {
-            return SCE_ERROR_ERRNO_ENOENT;
+            return IO_ERROR(SCE_ERROR_ERRNO_ENOENT);
         }
 
         File file_node;
@@ -380,8 +380,11 @@ int write_file(SceUID fd, const void *data, SceSize size, const IOState &io, con
 }
 
 int seek_file(SceUID fd, int offset, int whence, IOState &io, const char *export_name) {
-    assert(fd >= 0);
     assert((whence == SCE_SEEK_SET) || (whence == SCE_SEEK_CUR) || (whence == SCE_SEEK_END));
+
+    if (fd < 0) {
+        return IO_ERROR(SCE_ERROR_ERRNO_EBADF);
+    }
 
     const StdFiles::const_iterator std_file = io.std_files.find(fd);
 
@@ -433,13 +436,17 @@ int seek_file(SceUID fd, int offset, int whence, IOState &io, const char *export
     return pos;
 }
 
-void close_file(IOState &io, SceUID fd, const char *export_name) {
-    assert(fd >= 0);
+int close_file(IOState &io, SceUID fd, const char *export_name) {
+    if (fd < 0) {
+        return IO_ERROR(SCE_ERROR_ERRNO_EMFILE);
+    }
 
     LOG_TRACE("{}: Closing file: fd: {}", export_name, log_hex(fd));
 
     io.tty_files.erase(fd);
     io.std_files.erase(fd);
+
+    return 0;
 }
 
 int remove_file(IOState &io, const char *file, const char *pref_path, const char *export_name) {
@@ -541,7 +548,7 @@ int stat_file(IOState &io, const char *file, SceIoStat *statp, const char *pref_
         WIN32_FIND_DATAW find_data;
         HANDLE handle = FindFirstFileW(string_utils::utf_to_wide(file_path).c_str(), &find_data);
         if (handle == INVALID_HANDLE_VALUE) {
-            return IO_ERROR_UNK();
+            return IO_ERROR(SCE_ERROR_ERRNO_EMFILE);
         }
         FindClose(handle);
 
@@ -636,7 +643,7 @@ int open_dir(IOState &io, const char *path, const char *pref_path, const char *e
     });
 #endif
     if (!dir) {
-        return SCE_ERROR_ERRNO_ENOENT;
+        return IO_ERROR(SCE_ERROR_ERRNO_ENOENT);
     }
 
     Directory dir_node;

@@ -176,7 +176,7 @@ static bool load_imports(const sce_module_info_raw &module, Ptr<const void> segm
         Address var_entry_table{};
 
         if (imports->size == 0x24) {
-            auto short_imports = reinterpret_cast<const sce_module_imports_short_raw *>(imports);
+            const sce_module_imports_short_raw *short_imports = reinterpret_cast<const sce_module_imports_short_raw *>(imports);
             module_name = short_imports->module_name;
             func_nid_table = short_imports->func_nid_table;
             func_entry_table = short_imports->func_entry_table;

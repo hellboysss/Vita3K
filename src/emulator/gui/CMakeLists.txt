@@ -11,6 +11,7 @@ src/imgui_impl.cpp
 src/ui_common_dialog.cpp
 src/ui_condvars_dialog.cpp
 src/ui_eventflags_dialog.cpp
+src/ui_livearea.cpp
 src/ui_main.cpp
 src/ui_main_menubar.cpp
 src/ui_mutexes_dialog.cpp
@@ -20,4 +21,4 @@ src/ui_controls_dialog.cpp
 )
 
 target_include_directories(gui PUBLIC include)
-target_link_libraries(gui PUBLIC sdl2 imgui glutil host kernel util dialog)
+target_link_libraries(gui PUBLIC sdl2 imgui glutil host kernel pugixml util io dialog)

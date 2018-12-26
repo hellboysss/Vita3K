@@ -89,6 +89,7 @@ void DrawReinstallDialog(HostState &host, GenericDialogState *status) {
 }
 
 void DrawUI(HostState &host) {
+    DrawLivearea(host);
     DrawMainMenuBar(host);
 
     ImGui::PushFont(host.gui.monospaced_font);

@@ -128,3 +128,5 @@ set_target_properties(spirv-cross-reflect PROPERTIES EXCLUDE_FROM_ALL TRUE)
 add_library(dlmalloc STATIC "${CMAKE_CURRENT_SOURCE_DIR}/dlmalloc/dlmalloc.cc")
 target_include_directories(dlmalloc PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/dlmalloc")
 target_compile_definitions(dlmalloc PUBLIC ONLY_MSPACES=1)
+
+add_subdirectory(pugixml)

@@ -37,6 +37,14 @@ struct GamesSelector {
     SelectorState state = SELECT_APP;
 };
 
+struct Livearea {
+    std::string background_path;
+    std::string last_cached_id;
+
+    bool should_render{ false };
+    bool cached{ false };
+};
+
 struct GuiState {
     // Debug menu
     bool renderer_focused = true;
@@ -56,6 +64,8 @@ struct GuiState {
 
     DialogState common_dialog;
     GamesSelector game_selector;
+
+    Livearea livearea;
 
     // imgui
     ImFont *normal_font{};

@@ -17,10 +17,13 @@
 
 #include "SceCtrl.h"
 
+#include <util/log.h>
+
 #include <psp2/ctrl.h>
 #include <psp2/kernel/error.h>
 
 #include <SDL_gamecontroller.h>
+#include <SDL_haptic.h>
 #include <SDL_keyboard.h>
 
 #include <algorithm>
@@ -145,12 +148,23 @@ static uint8_t float_to_byte(float f) {
     return static_cast<uint8_t>(clamped * 255);
 }
 
+static int reserve_port(CtrlState &state) {
+    for (int i = 0; i < 4; i++) {
+        if (state.free_ports[i]) {
+            state.free_ports[i] = false;
+            return i + 1;
+        }
+    }
+}
+
 static void remove_disconnected_controllers(CtrlState &state) {
-    for (GameControllerList::iterator controller = state.controllers.begin(); controller != state.controllers.end();) {
-        if (SDL_GameControllerGetAttached(controller->second.get())) {
+    for (ControllerList::iterator controller = state.controllers.begin(); controller != state.controllers.end();) {
+        if (SDL_GameControllerGetAttached(controller->second.controller.get())) {
             ++controller;
         } else {
+            state.free_ports[controller->second.port - 1] = true;
             controller = state.controllers.erase(controller);
+            state.controllers_num--;
         }
     }
 }
@@ -158,17 +172,31 @@ static void remove_disconnected_controllers(CtrlState &state) {
 static void add_new_controllers(CtrlState &state) {
     const int num_joysticks = SDL_NumJoysticks();
     for (int joystick_index = 0; joystick_index < num_joysticks; ++joystick_index) {
+        if (state.controllers_num >= 4) {
+            return;
+        }
         if (SDL_IsGameController(joystick_index)) {
             const SDL_JoystickGUID guid = SDL_JoystickGetDeviceGUID(joystick_index);
             if (state.controllers.find(guid) == state.controllers.end()) {
+                Controller new_controller;
                 const GameControllerPtr controller(SDL_GameControllerOpen(joystick_index), SDL_GameControllerClose);
-                state.controllers.insert(GameControllerList::value_type(guid, controller));
+                new_controller.controller = controller;
+                SDL_Haptic *haptic = SDL_HapticOpenFromJoystick(SDL_GameControllerGetJoystick(controller.get()));
+                SDL_HapticRumbleInit(haptic);
+                const HapticPtr handle(haptic, SDL_HapticClose);
+                new_controller.haptic = handle;
+                new_controller.port = reserve_port(state);
+                state.controllers.emplace(guid, new_controller);
+                state.controllers_num++;
             }
         }
     }
 }
 
-static int peek_buffer_positive(HostState &host, SceCtrlData *&pad_data) {
+static int peek_buffer_positive(HostState &host, int port, SceCtrlData *&pad_data) {
+    if (port == 0) {
+        port++;
+    }
     CtrlState &state = host.ctrl;
     remove_disconnected_controllers(state);
     add_new_controllers(state);
@@ -178,9 +206,13 @@ static int peek_buffer_positive(HostState &host, SceCtrlData *&pad_data) {
 
     std::array<float, 4> axes;
     axes.fill(0);
-    apply_keyboard(&pad_data->buttons, axes.data());
-    for (const GameControllerList::value_type &controller : state.controllers) {
-        apply_controller(&pad_data->buttons, axes.data(), controller.second.get());
+    if (port == 1) {
+        apply_keyboard(&pad_data->buttons, axes.data());
+    }
+    for (const auto &controller : state.controllers) {
+        if (controller.second.port == port) {
+            apply_controller(&pad_data->buttons, axes.data(), controller.second.controller.get());
+        }
     }
 
     if (input_mode == SCE_CTRL_MODE_DIGITAL) {
@@ -222,8 +254,12 @@ EXPORT(int, sceCtrlGetButtonIntercept) {
     return UNIMPLEMENTED();
 }
 
-EXPORT(int, sceCtrlGetControllerPortInfo) {
-    return UNIMPLEMENTED();
+EXPORT(int, sceCtrlGetControllerPortInfo, SceCtrlPortInfo *info) {
+    info->port[0] = host.cfg.pstv_mode ? SCE_CTRL_TYPE_VIRT : SCE_CTRL_TYPE_PHY;
+    for (int i = 0; i < 4; i++) {
+        info->port[i + 1] = (host.cfg.pstv_mode && !host.ctrl.free_ports[i]) ? SCE_CTRL_TYPE_DS3 : SCE_CTRL_TYPE_UNPAIRED;
+    }
+    return 0;
 }
 
 EXPORT(int, sceCtrlGetProcessStatus) {
@@ -250,8 +286,8 @@ EXPORT(int, sceCtrlGetWirelessControllerInfo) {
     return UNIMPLEMENTED();
 }
 
-EXPORT(int, sceCtrlIsMultiControllerSupported) {
-    return UNIMPLEMENTED();
+EXPORT(bool, sceCtrlIsMultiControllerSupported) {
+    return host.cfg.pstv_mode;
 }
 
 EXPORT(int, sceCtrlPeekBufferNegative) {
@@ -265,8 +301,10 @@ EXPORT(int, sceCtrlPeekBufferNegative2) {
 EXPORT(int, sceCtrlPeekBufferPositive, int port, SceCtrlData *pad_data, int count) {
     assert(pad_data != nullptr);
     assert(count == 1);
-
-    return peek_buffer_positive(host, pad_data);
+    if (port > 1 && !host.cfg.pstv_mode) {
+        return RET_ERROR(SCE_CTRL_ERROR_NO_DEVICE);
+    }
+    return peek_buffer_positive(host, port, pad_data);
 }
 
 EXPORT(int, sceCtrlPeekBufferPositive2) {
@@ -290,7 +328,10 @@ EXPORT(int, sceCtrlReadBufferNegative2) {
 }
 
 EXPORT(int, sceCtrlReadBufferPositive, int port, SceCtrlData *pad_data, int count) {
-    return peek_buffer_positive(host, pad_data);
+    if (port > 1 && !host.cfg.pstv_mode) {
+        return RET_ERROR(SCE_CTRL_ERROR_NO_DEVICE);
+    }
+    return peek_buffer_positive(host, port, pad_data);
 }
 
 EXPORT(int, sceCtrlReadBufferPositive2) {
@@ -313,8 +354,29 @@ EXPORT(int, sceCtrlResetLightBar) {
     return UNIMPLEMENTED();
 }
 
-EXPORT(int, sceCtrlSetActuator) {
-    return UNIMPLEMENTED();
+EXPORT(int, sceCtrlSetActuator, int port, const SceCtrlActuator *pState) {
+    if (!host.cfg.pstv_mode) {
+        return RET_ERROR(SCE_CTRL_ERROR_NOT_SUPPORTED);
+    }
+
+    CtrlState &state = host.ctrl;
+    remove_disconnected_controllers(state);
+    add_new_controllers(state);
+
+    for (const auto &controller : state.controllers) {
+        if (controller.second.port == port) {
+            SDL_Haptic *handle = controller.second.haptic.get();
+            if (pState->small == 0 && pState->large == 0) {
+                SDL_HapticRumbleStop(handle);
+            } else {
+                // TODO: Look into a better implementation to distinguish both motors when available
+                SDL_HapticRumblePlay(handle, ((pState->small * 1.0f) / 510.0f) + ((pState->large * 1.0f) / 510.0f), SDL_HAPTIC_INFINITY);
+            }
+            return 0;
+        }
+    }
+
+    return RET_ERROR(SCE_CTRL_ERROR_NO_DEVICE);
 }
 
 EXPORT(int, sceCtrlSetAnalogStickCheckMode) {

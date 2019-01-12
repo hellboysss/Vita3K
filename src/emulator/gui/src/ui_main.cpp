@@ -113,5 +113,11 @@ void DrawUI(HostState &host) {
     if (host.gui.eventflags_dialog) {
         DrawEventFlagsDialog(host);
     }
+    if (host.gui.controls_dialog) {
+        DrawControlsDialog(host);
+    }
+    if (host.gui.allocations_dialog) {
+        DrawAllocationsDialog(host);
+    }
     ImGui::PopFont();
 }

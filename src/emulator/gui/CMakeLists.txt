@@ -16,6 +16,8 @@ src/ui_main_menubar.cpp
 src/ui_mutexes_dialog.cpp
 src/ui_semaphores_dialog.cpp
 src/ui_threads_dialog.cpp
+src/ui_controls_dialog.cpp
+src/ui_allocations_dialog.cpp
 )
 
 target_include_directories(gui PUBLIC include)

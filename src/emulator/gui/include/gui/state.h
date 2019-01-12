@@ -20,6 +20,7 @@
 #include <dialog/state.h>
 
 struct ImFont;
+struct MemoryEditor;
 
 enum SelectorState {
     SELECT_APP
@@ -47,12 +48,18 @@ struct GuiState {
     bool mutexes_dialog = false;
     bool lwmutexes_dialog = false;
     bool eventflags_dialog = false;
+    bool allocations_dialog = false;
 
     // Optimisation menu
     bool texture_cache = true;
 
+    // Help menu
+    bool controls_dialog = false;
+
     DialogState common_dialog;
     GamesSelector game_selector;
+    MemoryEditor *memory_editor = nullptr;
+    size_t memory_editor_start, memory_editor_count;
 
     // imgui
     ImFont *normal_font{};

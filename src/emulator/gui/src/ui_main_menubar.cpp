@@ -34,6 +34,22 @@ void DrawMainMenuBar(HostState &host) {
             ImGui::MenuItem("Condition Variables", nullptr, &host.gui.condvars_dialog);
             ImGui::MenuItem("Lightweight Condition Variables", nullptr, &host.gui.lwcondvars_dialog);
             ImGui::MenuItem("Event Flags", nullptr, &host.gui.eventflags_dialog);
+            ImGui::MenuItem("Memory Allocations", nullptr, &host.gui.allocations_dialog);
+            ImGui::PopStyleColor();
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Configuration")) {
+            ImGui::PushStyleColor(ImGuiCol_Text, GUI_COLOR_TEXT_MENUBAR_OPTIONS);
+            if (ImGui::BeginMenu("Emulated Console")) {
+                if (ImGui::MenuItem("PS Vita", nullptr, !host.cfg.pstv_mode)) {
+                    host.cfg.pstv_mode = false;
+                }
+                if (ImGui::MenuItem("PS TV", nullptr, host.cfg.pstv_mode)) {
+                    host.cfg.pstv_mode = true;
+                }
+                ImGui::EndMenu();
+            }
             ImGui::PopStyleColor();
             ImGui::EndMenu();
         }
@@ -44,6 +60,14 @@ void DrawMainMenuBar(HostState &host) {
             ImGui::PopStyleColor();
             ImGui::EndMenu();
         }
+
+        if (ImGui::BeginMenu("Help")) {
+            ImGui::PushStyleColor(ImGuiCol_Text, GUI_COLOR_TEXT_MENUBAR_OPTIONS);
+            ImGui::MenuItem("Controls", nullptr, &host.gui.controls_dialog);
+            ImGui::PopStyleColor();
+            ImGui::EndMenu();
+        }
+
         ImGui::PopStyleColor();
         ImGui::EndMainMenuBar();
     }

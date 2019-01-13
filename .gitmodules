@@ -64,3 +64,6 @@
 [submodule "src/external/imgui_club"]
 	path = src/external/imgui_club
 	url = https://github.com/ocornut/imgui_club.git
+[submodule "src/external/dynarmic"]
+	path = src/external/dynarmic
+	url = https://github.com/merrymage/dynarmic

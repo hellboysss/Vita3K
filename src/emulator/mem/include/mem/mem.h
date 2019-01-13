@@ -17,10 +17,11 @@
 
 #pragma once
 
+#include <array>
 #include <functional>
 #include <map>
-#include <mutex>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,8 @@ struct MemState {
     Allocated allocated_pages;
     std::mutex generation_mutex;
     GenerationNames generation_names;
+
+    std::unique_ptr<std::array<uint8_t *, 1 << 20>> pages_cpu;
 };
 
 constexpr size_t KB(size_t kb) {

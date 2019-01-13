@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <mem/mem.h> // Address.
+#include <cpu/state.h>
 
 #include <cstdint>
 #include <functional>
@@ -25,10 +25,7 @@
 struct CPUState;
 struct MemState;
 
-typedef std::function<void(CPUState &cpu, uint32_t, Address)> CallSVC;
-typedef std::unique_ptr<CPUState, std::function<void(CPUState *)>> CPUStatePtr;
-
-CPUStatePtr init_cpu(Address pc, Address sp, bool log_code, CallSVC call_svc, MemState &mem);
+CPUStatePtr init_cpu(CPUBackend backend, Address pc, Address sp, bool log_code, CallSVC call_svc, MemState &mem);
 int run(CPUState &state, bool callback);
 void stop(CPUState &state);
 uint32_t read_reg(CPUState &state, size_t index);

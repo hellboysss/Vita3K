@@ -32,6 +32,8 @@
 #include <cassert>
 #include <cstring>
 
+#include <Windows.h>
+
 struct ThreadParams {
     KernelState *kernel = nullptr;
     SceUID thid = SCE_KERNEL_ERROR_ILLEGAL_THREAD_ID;
@@ -89,7 +91,7 @@ SceUID create_thread(Ptr<const void> entry_point, KernelState &kernel, MemState 
         call_import(cpu, nid, thid);
     };
 
-    thread->cpu = init_cpu(entry_point.address(), stack_top, log_code, call_svc, mem);
+    thread->cpu = init_cpu(CPUBackend::Unicorn, entry_point.address(), stack_top, log_code, call_svc, mem);
     if (!thread->cpu) {
         return SCE_KERNEL_ERROR_ERROR;
     }
@@ -130,6 +132,22 @@ int start_thread(KernelState &kernel, const SceUID &thid, SceSize arglen, const 
     };
 
     const ThreadPtr running_thread(SDL_CreateThread(&thread_function, waiting->second.name.c_str(), &params), delete_thread);
+
+      
+    if (thread->priority == SCE_KERNEL_LOWEST_PRIORITY_USER) {
+        HANDLE h = OpenThread(THREAD_SET_INFORMATION, false, SDL_GetThreadID(&(*running_thread)));
+        bool succ = SetThreadPriority(h, THREAD_PRIORITY_LOWEST);
+
+        int a = 5;
+    } else if (thread->priority == SCE_KERNEL_HIGHEST_PRIORITY_USER) {
+        HANDLE h = OpenThread(THREAD_SET_INFORMATION, false, SDL_GetThreadID(&(*running_thread)));
+        bool succ = SetThreadPriority(h, THREAD_PRIORITY_HIGHEST);
+
+        auto dwError = GetLastError();
+
+        int a = 5;
+    }
+
     if (!running_thread) {
         return SCE_KERNEL_ERROR_THREAD_ERROR;
     }

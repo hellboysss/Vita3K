@@ -76,10 +76,10 @@ void config_file_emit_optional_single(YAML::Emitter &emitter, const char *name, 
 }
 
 template <typename T>
-void config_file_emit_vector(YAML::Emitter &emitter, const char *name, std::vector<T> &values)  {
+void config_file_emit_vector(YAML::Emitter &emitter, const char *name, std::vector<T> &values) {
     emitter << YAML::Key << name << YAML::BeginSeq;
 
-    for (const T &value: values) {
+    for (const T &value : values) {
         emitter << value;
     }
 
@@ -111,7 +111,7 @@ ExitCode serialize(Config &cfg) {
 }
 
 ExitCode deserialize(Config &cfg) {
-    YAML::Node config_node {};
+    YAML::Node config_node{};
 
     try {
         config_node = YAML::LoadFile("config.yml");
@@ -125,7 +125,7 @@ ExitCode deserialize(Config &cfg) {
     get_yaml_value(config_node, "log-active-shaders", &cfg.log_active_shaders, false);
     get_yaml_value(config_node, "log-uniforms", &cfg.log_uniforms, false);
     get_yaml_value(config_node, "pstv-mode", &cfg.pstv_mode, false);
-    
+
     get_yaml_value_optional(config_node, "log-level", &cfg.log_level, static_cast<int>(spdlog::level::trace));
     get_yaml_value_optional(config_node, "pref-path", &cfg.pref_path);
 
@@ -133,7 +133,7 @@ ExitCode deserialize(Config &cfg) {
     try {
         YAML::Node lle_modules_node = config_node["lle-modules"];
 
-        for (auto lle_module_node: lle_modules_node) {
+        for (auto lle_module_node : lle_modules_node) {
             cfg.lle_modules.push_back(lle_module_node.as<std::string>());
         }
     } catch (YAML::Exception &exception) {
@@ -157,7 +157,8 @@ ExitCode init(Config &cfg, int argc, char **argv) {
         po::options_description input_desc("Input");
         input_desc.add_options()
             ("input-vpk-path,i", po::value(&cfg.vpk_path), "path of app in .vpk format to install & run")
-            ("input-installed-id,r", po::value(&cfg.run_title_id), "title ID of installed app to run");
+            ("input-installed-id,r", po::value(&cfg.run_title_id), "title ID of installed app to run")
+            ("recompile-shader,s", po::value(&cfg.recompile_shader_path), "Recompile the given PS Vita shader (GXP format) to SPIR-V / GLSL and quit");
 
         po::options_description config_desc("Configuration");
         config_desc.add_options()

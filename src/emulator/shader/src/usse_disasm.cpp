@@ -60,6 +60,47 @@ const char *move_data_type_str(MoveDataType p) {
     }
 }
 
+std::string operand_to_str(Operand op, const Imm4 write_mask) {
+    std::string opstr;
+
+    switch (op.bank) {
+    case USSE::RegisterBank::PRIMATTR: {
+        opstr += "pa";
+        break;
+    }
+
+    case USSE::RegisterBank::SECATTR: {
+        opstr += "sa";
+        break;
+    }
+
+    case USSE::RegisterBank::TEMP: {
+        opstr += "t";
+        break;
+    }
+
+    case USSE::RegisterBank::OUTPUT: {
+        opstr += "o";
+        break;
+    }
+
+    case USSE::RegisterBank::FPINTERNAL: {
+        opstr += "i";
+        break;
+    }
+
+    default: {
+        assert(false);
+        break;
+    }
+    }
+    
+    opstr += std::to_string(op.num);
+    opstr += "." + swizzle_to_str<4>(op.swizzle, write_mask);
+
+    return opstr;
+}
+
 } // namespace disasm
 } // namespace usse
 } // namespace shader

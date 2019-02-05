@@ -132,6 +132,7 @@ private:
 
         bool result = bank.find_reg_at(dest.num + off, dest_reg, out_comp_offset);
         if (!result) {
+            LOG_ERROR("Can't find dest register {}", disasm::operand_to_str(dest, 0));
             return;
         }
 

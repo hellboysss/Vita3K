@@ -96,7 +96,10 @@ std::string operand_to_str(Operand op, const Imm4 write_mask) {
     }
     
     opstr += std::to_string(op.num);
-    opstr += "." + swizzle_to_str<4>(op.swizzle, write_mask);
+
+    if (write_mask != 0) {
+        opstr += "." + swizzle_to_str<4>(op.swizzle, write_mask);
+    }
 
     return opstr;
 }

@@ -60,7 +60,6 @@ public:
     }
 
 private:
-    // Ry-o-ji ??? Is that you
     #define BEGIN_REPEAT(repeat_count, roj)          \
         const auto repeat_count_num = (uint8_t)repeat_count + 1;    \
         const auto repeat_offset_jump = roj;                        \
@@ -70,6 +69,11 @@ private:
                 
     #define END_REPEAT() }
     
+    /*
+     * \brief Given an operand, load it and returns a SPIR-V vec4
+     * 
+     * \returns A vec4 copy of given operand
+    */
     spv::Id load(Operand &op, const std::uint8_t offset = 0, bool /* abs */ = false, bool /* neg */= false) {
         // TODO: Array (OpAccessChain)
         const SpirvVarRegBank &bank = get_reg_bank(op.bank);
@@ -80,17 +84,18 @@ private:
 
         bool result = bank.find_reg_at(op.num + offset, reg1, out_comp_offset);
         if (!result) {
-            return 0xFFFFFFFF;
+            LOG_ERROR("Can't load register {}", disasm::operand_to_str(op, 0));
+            return spv::NoResult;
         }
 
         if ((op.bank != USSE::RegisterBank::PRIMATTR && 
             op.bank != USSE::RegisterBank::SECATTR && 
             op.bank != USSE::RegisterBank::OUTPUT) || 
-            (out_comp_offset == 0)) {
-            return reg1.var_id;
+            out_comp_offset == 0) {
+            return m_b.createLoad(reg1.var_id);
         }
 
-        // Get the next reg, so we can do a bridgeee
+        // Get the next reg, so we can do a bridge
         SpirvReg reg2;
         std::uint32_t temp = 0;
         result = bank.find_reg_at(op.num + offset + reg1.size, reg2, temp);
@@ -101,7 +106,7 @@ private:
         // throws in a valid register and limit swizzle offset to 3
         //
         // I haven't think of any edge case, but this should be looked when there is 
-        // any problems with briding
+        // any problems with bridging
         if (!result) {
             reg2 = reg1;
             maximum_border = 3;
@@ -137,7 +142,7 @@ private:
         int bitwrite_count = 0;
         int total_comp = m_b.getNumTypeComponents(dest_reg.type_id);
 
-        // Total comp = 2, limit scan to only x, y
+        // Total comp = 2, limit mask scan to only x, y
         // Total comp = 3, limit mask scan to only x, y, z
         // So on..
         for (std::uint8_t i = 0; i < total_comp; i++) {
@@ -345,8 +350,11 @@ public:
         Instruction inst{};
 
         // Is this VMAD3 or VMAD4, op2 = 0 => vec3
-        int type = 0;
-        (opcode2 == 0) ? (void)(type = 1) : (void)(type = 2);
+        int type = 2;
+
+        if (opcode2 == 0) {
+            type = 1;
+        }
 
         // Double regs always true for src0, dest
         inst.opr.src0 = decode_src12(src0_n, src0_bank, src0_extended_bank, true);
@@ -360,8 +368,6 @@ public:
         inst.opr.src2.num = gpi1_n;
 
         // Swizzleee
-        inst.opr.dest.swizzle = SWIZZLE_CHANNEL_4(X, Y, Z, W);
-
         if (type == 1) {
             inst.opr.dest.swizzle[3] = USSE::SwizzleChannel::_X;
         }
@@ -383,8 +389,7 @@ public:
             spv::Id vsrc1 = load(inst.opr.src1, repeat_offset, gpi0_abs, gpi0_neg);
             spv::Id vsrc2 = load(inst.opr.src2, repeat_offset, gpi1_abs, gpi1_neg);
 
-            if (vsrc0 == 0xFFFFFFFF || vsrc1 == 0xFFFFFFFF || vsrc2 == 0xFFFFFFFF) {
-                LOG_ERROR("Can't found reg!");
+            if (vsrc0 == spv::NoResult || vsrc1 == spv::NoResult || vsrc2 == spv::NoResult) {
                 return false;
             }
 

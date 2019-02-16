@@ -181,6 +181,20 @@ struct SpirvReg {
 
     uint32_t offset;
     uint32_t size;
+
+    SpirvReg()
+        : type_id(0)
+        , var_id(0)
+        , offset(0)
+        , size(0) {
+    }
+
+    SpirvReg(const spv::Id type_id, const spv::Id var_id, const std::uint32_t offset, const std::uint32_t size)
+        : offset(offset)
+        , size(size)
+        , type_id(type_id)
+        , var_id(var_id) {
+    }
 };
 
 // Helper for managing USSE registers and register banks and their associated SPIR-V variables

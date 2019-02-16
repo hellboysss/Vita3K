@@ -536,6 +536,92 @@ static SpirvShaderParameters create_parameters(spv::Builder &b, const SceGxmProg
     return spv_params;
 }
 
+static void dump_static_texel_calls(const SceGxmProgram &program) {
+    // Both vertex output and this struct should stay in a larger varying struct    
+    auto vertex_outputs_ptr = reinterpret_cast<const SceGxmProgramVertexOutput *>(
+        reinterpret_cast<const std::uint8_t *>(&program.varyings_offset) + program.varyings_offset);
+
+    const SceGxmProgramAttributeDescriptor *descriptor = reinterpret_cast<const SceGxmProgramAttributeDescriptor *>(
+        reinterpret_cast<const std::uint8_t *>(&vertex_outputs_ptr->vertex_outputs1) + vertex_outputs_ptr->vertex_outputs1);
+    
+    std::uint32_t pa_offset = 0;
+    const SceGxmProgramParameter *const gxp_parameters = gxp::program_parameters(program);
+    
+    // It may actually be total fragments input
+    for (std::size_t i = 0; i < vertex_outputs_ptr->vertex_outputs_count; i++, descriptor++) {
+        // 4 bit flag indicates total PA offset to skip
+        if ((descriptor->attribute_info & 0xF000) != 0xF000) {
+            pa_offset += ((descriptor->size >> 4) & 3) + 1;
+        }
+
+        std::uint32_t possibly_coord_num = (descriptor->attribute_info & 0x40F);
+
+        // Skip this coord and instead, replace it with a vec4 texel color
+        if (possibly_coord_num != 0xF) {
+            std::string tex_name = "";
+            std::string sampling_type = "2D";
+
+            for (std::uint32_t i = 0; i < program.parameter_count; i++) {
+                const SceGxmProgramParameter &parameter = gxp_parameters[i];
+                if (parameter.resource_index == descriptor->resource_index &&
+                    parameter.category == SCE_GXM_PARAMETER_CATEGORY_SAMPLER) {
+                    tex_name = gxp::parameter_name_raw(parameter);
+
+                    // ????
+                    if ((parameter.semantic >> 12) & 1) {
+                        sampling_type = "CUBE";
+                    }
+
+                    break;
+                }
+            }
+
+            const auto component_type = (descriptor->component_info >> 4) & 3;
+            const auto swizzle_texcoord = (descriptor->attribute_info & 0x300);
+
+            std::string component_type_str = "????";
+
+            if (component_type == 3) {
+                component_type_str = "float";
+            } else if (component_type == 2) {
+                component_type_str = "half";
+            }
+
+            std::string swizzle_str = ".xy";
+            std::string projecting;
+            
+            if (swizzle_texcoord != 0x100) {
+                projecting = "proj";
+            }
+
+            if (swizzle_texcoord == 0x300) {
+                swizzle_str = ".xyz";
+            } else if (swizzle_texcoord == 0x200) {
+                swizzle_str = ".xyw";
+            }
+
+            std::string centroid_str;
+
+            if ((descriptor->attribute_info & 0x10) == 0x10) {
+                centroid_str = "_CENTROID";
+            }
+
+            int num_component = 0;
+
+            if ((descriptor->component_info & 0x40) != 0x40) {
+                num_component = 4;
+            }
+
+            std::string texcoord_name = "TEXCOORD" + std::to_string(possibly_coord_num);
+            LOG_TRACE("pa{} = tex{}{}<{}{}>({}, {}{}{})", pa_offset, sampling_type, projecting,
+                component_type_str, num_component, tex_name, texcoord_name, centroid_str, swizzle_str);
+
+            // Size of this extra pa occupied
+            pa_offset += ((descriptor->size >> 6) & 3) + 1;
+        }
+    }
+}
+
 static void generate_shader_body(spv::Builder &b, const SpirvShaderParameters &parameters, const SceGxmProgram &program) {
     usse::convert_gxp_usse_to_spirv(b, program, parameters);
 }
@@ -556,6 +642,7 @@ static SpirvCode convert_gxp_to_spirv(const SceGxmProgram &program, const std::s
     b.addCapability(spv::Capability::CapabilityShader);
 
     SpirvShaderParameters parameters = create_parameters(b, program, program_type);
+    dump_static_texel_calls(program);
 
     std::string entry_point_name;
     spv::ExecutionModel execution_model;

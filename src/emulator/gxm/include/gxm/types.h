@@ -198,7 +198,7 @@ enum SceGxmVertexProgramOutputs : int {
 
 #pragma pack(push, 1)
 struct SceGxmProgramVertexOutput {
-    std::uint8_t unk[12];
+    std::uint8_t unk1[12];
 
     std::uint16_t vertex_outputs_count;
     std::uint16_t pad; // padding maybe
@@ -206,7 +206,15 @@ struct SceGxmProgramVertexOutput {
     std::uint32_t vertex_outputs2; // includes texcoord outputs
 };
 #pragma pack(pop)
+
 static_assert(sizeof(SceGxmProgramVertexOutput) == 24);
+
+struct SceGxmProgramAttributeDescriptor {
+    std::uint32_t attribute_info;       
+    std::uint32_t resource_index;
+    std::uint32_t size;
+    std::uint32_t component_info;       ///< Total components and type
+};
 
 enum SceGxmFragmentProgramInputs : int {
     _SCE_GXM_FRAGMENT_PROGRAM_INPUT_NONE = 0,

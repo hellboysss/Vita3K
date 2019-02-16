@@ -53,6 +53,8 @@ public:
     spv::Id const_f32[4];
     // spv::Id const_f32_v[5];  // Starts from 1 ([1] is vec 1)
 
+    SpirvReg pa_writeable[100];
+
     USSETranslatorVisitor() = delete;
     explicit USSETranslatorVisitor(spv::Builder &_b, const uint64_t &_instr, const SpirvShaderParameters &spirv_params, const SceGxmProgram &program)
         : m_b(_b)
@@ -86,7 +88,58 @@ private:
          repeat_offset += repeat_offset_jump) {
 #define END_REPEAT() }
 
-    /*
+    /**
+     * \brief Get a raw SPIR-V variable corresponds to the given bank and register offset.
+     * 
+     * Beside finding the correspond SPIR-V register bank and returns the correspond SPIR-V variable, this function also
+     * does patching for case like getting a pa0 variable for storage and more.
+     * 
+     * Client should use this function instead of getting raw SPIR-V register bank using get_reg_bank and find the SPIR-V variable
+     * correspond to your USSE register in it.
+     * 
+     * \returns True on success.
+    */
+    bool get_spirv_reg(const USSE::RegisterBank bank, std::uint32_t reg_offset, std::uint32_t shift_offset, SpirvReg &reg, 
+        std::uint32_t &out_comp_offset, const bool get_for_store = false) {
+        const std::uint32_t original_reg_offset = reg_offset;
+
+        if (bank == USSE::RegisterBank::FPINTERNAL) {
+            // Each GPI register is 128 bits long = 16 bytes long
+            // So we need to multiply the reg index with 16 in order to get the right offset
+            reg_offset *= 16;
+        }
+
+        // If we are getting a PRIMATTR reg, we need to check to see if a writeable one has already been created
+        // If it's, get the writeable one, else proceed.
+        if (bank == USSE::RegisterBank::PRIMATTR) {
+            if (pa_writeable[(reg_offset + shift_offset) / 4].var_id != spv::NoResult) {
+                reg = pa_writeable[(reg_offset + shift_offset) / 4];
+                return true;
+            }
+        }
+
+        const SpirvVarRegBank &spirv_bank = get_reg_bank(bank);
+
+        bool result = spirv_bank.find_reg_at(reg_offset + shift_offset, reg, out_comp_offset);
+        if (!result) {
+            return false;
+        }
+
+        if (bank == USSE::RegisterBank::PRIMATTR && get_for_store) {
+            if (pa_writeable[(reg_offset + shift_offset) / 4].var_id == spv::NoResult) {
+                std::string new_pa_writeable_name = "pa" + std::to_string(reg_offset) + "_patch";
+                const spv::Id new_pa_writeable = m_b.createVariable(spv::StorageClassPrivate, reg.type_id, new_pa_writeable_name.c_str());
+                m_b.createStore(m_b.createLoad(reg.var_id), new_pa_writeable);
+                
+                reg.var_id = new_pa_writeable;
+                pa_writeable[(reg_offset + shift_offset) / 4] = reg;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * \brief Create a new vector given two another vector and a shift offset.
      * 
      * This uses a method called bridging (connecting). For example, we have two vec4:
@@ -230,21 +283,11 @@ private:
             return m_b.makeCompositeConstant(t, { one, one });
         }
 
-        const SpirvVarRegBank &bank = get_reg_bank(op.bank);
-
         // Composite a new vector
         SpirvReg reg_left;
         std::uint32_t out_comp_offset;
-        std::uint32_t reg_offset = op.num;
 
-        if (op.bank == USSE::RegisterBank::FPINTERNAL) {
-            // Each GPI register is 128 bits long = 16 bytes long
-            // So we need to multiply the reg index with 16 in order to get the right offset
-            reg_offset *= 16;
-        }
-
-        bool result = bank.find_reg_at(reg_offset + offset, reg_left, out_comp_offset);
-        if (!result) {
+        if (!get_spirv_reg(op.bank, op.num, offset, reg_left, out_comp_offset)) {
             LOG_ERROR("Can't load register {}", disasm::operand_to_str(op, 0));
             return spv::NoResult;
         }
@@ -252,14 +295,13 @@ private:
         // Get the next reg, so we can do a bridge
         SpirvReg reg_right;
         std::uint32_t temp = 0;
-        result = bank.find_reg_at(reg_offset + offset + reg_left.size, reg_right, temp);
 
         // There is no more register to bridge to. For making it valid, just
         // throws in a valid register
         //
         // I haven't think of any edge case, but this should be looked when there is
         // any problems with bridging
-        if (!result)
+        if (!get_spirv_reg(op.bank, op.num, offset + reg_left.size, reg_right, temp))
             reg_right = reg_left;
 
         // Optimization: Bridging (VectorShuffle) or even swizzling is not always necessary
@@ -269,31 +311,22 @@ private:
         const bool needs_swizzle = !is_default(op.swizzle, dest_comp_count);
 
         if (!needs_swizzle) {
-            if (is_reg_left)
+            if (is_reg_left && m_b.getNumTypeComponents(reg_left.type_id) == dest_comp_count)
                 return m_b.createLoad(reg_left.var_id);
-            else if (is_reg_right)
+            else if (is_reg_right && m_b.getNumTypeComponents(reg_right.type_id) == dest_comp_count)
                 return m_b.createLoad(reg_right.var_id);
-        } else
-            // We need to bridge
-            return bridge(reg_left, reg_right, op.swizzle, out_comp_offset, dest_mask);
+        }
+
+        // We need to bridge
+        return bridge(reg_left, reg_right, op.swizzle, out_comp_offset, dest_mask);
     }
 
     void store(Operand &dest, spv::Id source, std::uint8_t dest_mask = 0xFF, std::uint8_t off = 0) {
-        const SpirvVarRegBank &bank = get_reg_bank(dest.bank);
-
         // Composite a new vector
         SpirvReg dest_reg;
         std::uint32_t dest_comp_offset;
-        std::uint32_t reg_offset = dest.num;
 
-        if (dest.bank == USSE::RegisterBank::FPINTERNAL) {
-            // Each GPI register is 128 bits long = 16 bytes long
-            // So we need to multiply the reg index with 16 in order to get the right offset
-            reg_offset *= 16;
-        }
-
-        bool result = bank.find_reg_at(reg_offset + off, dest_reg, dest_comp_offset);
-        if (!result) {
+        if (!get_spirv_reg(dest.bank, dest.num, off, dest_reg, dest_comp_offset, true)) {
             LOG_ERROR("Can't find dest register {}", disasm::operand_to_str(dest, 0));
             return;
         }
@@ -302,10 +335,14 @@ private:
         // register boundary, translate it to just a createStore
 
         const auto total_comp_source = static_cast<std::uint8_t>(m_b.getNumComponents(source));
+        const auto total_comp_dest = static_cast<std::uint8_t>(m_b.getNumTypeComponents(dest_reg.type_id));
+
         const auto dest_comp_count = dest_mask_to_comp_count(dest_mask);
 
         const bool needs_swizzle = !is_default(dest.swizzle, dest_comp_count);
-        const bool full_length = dest_comp_count == total_comp_source;
+
+        // The source needs to fit in both the dest vector and the total write components must be equal to total source components
+        const bool full_length = (total_comp_dest == total_comp_source) && (dest_comp_count == total_comp_source);
         const bool starts_at_0 = dest_comp_offset == 0;
 
         if (!needs_swizzle && full_length && starts_at_0) {
@@ -322,7 +359,7 @@ private:
         // Total comp = 2, limit mask scan to only x, y
         // Total comp = 3, limit mask scan to only x, y, z
         // So on..
-        for (std::uint8_t i = 0; i < dest_comp_count; i++) {
+        for (std::uint8_t i = 0; i < total_comp_dest; i++) {
             if (dest_mask & (1 << (dest_comp_offset + i) % 4)) {
                 ops.push_back((i + dest_comp_offset % 4) % 4);
             } else {
@@ -389,13 +426,22 @@ public:
     // Write pa0 to fragment output color
     // TODO: Is this and our OpenGL blending code enough?
     void patch_frag_output() {
-        const auto pa_bank = get_reg_bank(RegisterBank::PRIMATTR);
-        const auto o_bank = get_reg_bank(RegisterBank::OUTPUT);
+        SpirvReg pa0;
+        SpirvReg o0;
 
-        const auto pa_0 = pa_bank.get_vars()[0].var_id;
-        const auto o_0 = o_bank.get_vars()[0].var_id;
+        std::uint32_t temp = 0;
 
-        m_b.createStore(m_b.createLoad(pa_0), o_0);
+        if (!get_spirv_reg(RegisterBank::PRIMATTR, 0, 0, pa0, temp, false)) {
+            LOG_ERROR("Can't find pa0 for patching fragment output!");
+            return;
+        }
+
+        if (!get_spirv_reg(RegisterBank::OUTPUT, 0, 0, o0, temp, true)) {
+            LOG_ERROR("Can't find o0 for patching fragment output!");
+            return;
+        }
+
+        m_b.createStore(m_b.createLoad(pa0.var_id), o0.var_id);
     }
 
     //

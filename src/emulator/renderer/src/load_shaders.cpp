@@ -83,7 +83,6 @@ std::string load_shader(GLSLCache &cache, const SceGxmProgram &program, const ch
         LOG_INFO("Generating {} shader {}", shader_type_str, hash_text.data());
 
         source = shader::convert_gxp_to_glsl(program, hash_text.data());
-
         dump_missing_shader(hash_text.data(), shader_type_str, program, source.c_str(), base_path, title_id);
     }
 

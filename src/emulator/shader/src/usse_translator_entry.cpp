@@ -141,7 +141,9 @@ void convert_gxp_usse_to_spirv(spv::Builder &b, const SceGxmProgram &program, co
     const uint64_t instr_count = program.code_instr_count;
 
     uint64_t instr;
-    usse::USSETranslatorVisitor visitor(b, instr, parameters, program);
+    //usse::USSETranslatorVisitorStage1 visitor(b, instr, parameters, program);
+    usse::USSETranslatorVisitorStage1 visitor_stage1(instr);
+    usse::USSETranslatorVisitorStage2 visitor_stage2(b, parameters, program);
 
     for (auto instr_idx = 0; instr_idx < instr_count; ++instr_idx) {
         instr = code_ptr[instr_idx];
@@ -150,15 +152,21 @@ void convert_gxp_usse_to_spirv(spv::Builder &b, const SceGxmProgram &program, co
 
         usse::instr_idx = instr_idx;
 
-        auto decoder = usse::DecodeUSSE<usse::USSETranslatorVisitor>(instr);
-        if (decoder)
-            decoder->call(visitor, instr);
-        else
+        auto decoder = usse::DecodeUSSE<usse::USSETranslatorVisitorStage1>(instr);
+        if (decoder) {
+            usse::InstructionResult decode_stage1_result = decoder->call(visitor_stage1, instr);
+
+            if (decode_stage1_result) {
+                // We can proceed to stage2, where we actually translates these
+                visitor_stage2.translate(decode_stage1_result.value());
+            }
+        } else {
             LOG_DISASM("{:016x}: error: instruction unmatched", instr);
+        }
     }
 
     if (program.get_type() == emu::Fragment && !program.is_native_color()) {
-        visitor.patch_frag_output();
+        visitor_stage2.emit_non_native_frag_output();
     }
 }
 

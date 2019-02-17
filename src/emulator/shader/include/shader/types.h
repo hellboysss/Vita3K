@@ -138,8 +138,27 @@ enum class RegisterBank {
 };
 
 // TODO: Make this a std::set?
-enum RegisterFlags {
+enum RegisterFlags : uint32_t {
+    Absolute = 0x1000,       ///< Absolute the value
+    Negative = 0x2000        ///< Negative the value
 };
+
+inline RegisterFlags operator| (RegisterFlags a, RegisterFlags b) { 
+    return (RegisterFlags)((int)a | (int)b); 
+}
+
+inline RegisterFlags operator& (RegisterFlags a, RegisterFlags b) { 
+    return (RegisterFlags)((int)a & (int)b); 
+}
+
+inline RegisterFlags& operator|= (RegisterFlags& a, RegisterFlags b) { 
+    return (RegisterFlags&)((int&)a |= (int)b);
+}
+
+inline RegisterFlags& operator&= (RegisterFlags& a, RegisterFlags b) {
+    return (RegisterFlags&)((int&)a &= (int)b); 
+}
+
 // TODO: Make this a std::set?
 enum InstructionFlags {
 };
@@ -159,9 +178,13 @@ struct InstructionOperands {
 };
 
 struct Instruction {
+    USSE::ExtPredicate predicate;
+
     USSE::Opcode opcode = USSE::Opcode::INVALID;
     InstructionOperands opr;
-    InstructionFlags flags;
+    std::uint32_t flags;
+    USSE::Imm4 dest_mask;
+    USSE::RepeatCount repeat_count { USSE::RepeatCount::REPEAT_0 };
 };
 
 } // namespace USSE
@@ -176,25 +199,11 @@ struct SpirvVar {
 };
 
 struct SpirvReg {
-    spv::Id type_id;
-    spv::Id var_id;
+    spv::Id type_id{};
+    spv::Id var_id{};
 
-    uint32_t offset;
-    uint32_t size;
-
-    SpirvReg()
-        : type_id(0)
-        , var_id(0)
-        , offset(0)
-        , size(0) {
-    }
-
-    SpirvReg(const spv::Id type_id, const spv::Id var_id, const std::uint32_t offset, const std::uint32_t size)
-        : offset(offset)
-        , size(size)
-        , type_id(type_id)
-        , var_id(var_id) {
-    }
+    uint32_t offset{};
+    uint32_t size{};
 };
 
 // Helper for managing USSE registers and register banks and their associated SPIR-V variables

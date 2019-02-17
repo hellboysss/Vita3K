@@ -60,7 +60,7 @@ const char *move_data_type_str(MoveDataType p) {
     }
 }
 
-std::string reg_to_str(const USSE::RegisterBank bank, const std::uint32_t reg_num) {
+std::string reg_to_str(USSE::RegisterBank bank, uint32_t reg_num) {
     std::string opstr;
 
     switch (bank) {
@@ -104,11 +104,15 @@ std::string reg_to_str(const USSE::RegisterBank bank, const std::uint32_t reg_nu
     return opstr;
 }
 
-std::string operand_to_str(Operand op, const Imm4 write_mask) {
-    std::string opstr = reg_to_str(op.bank, op.num);
+std::string operand_to_str(Operand op, Imm4 write_mask, std::uint32_t shift) {
+    if (op.bank == USSE::RegisterBank::FPINTERNAL) {
+        shift /= 4;
+    }
+
+    std::string opstr = reg_to_str(op.bank, op.num + shift);
 
     if (write_mask != 0) {
-        opstr += "." + swizzle_to_str<4>(op.swizzle, write_mask);
+        opstr += "." + swizzle_to_str<4>(op.swizzle, write_mask, shift);
     }
 
     return opstr;

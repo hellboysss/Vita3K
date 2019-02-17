@@ -29,7 +29,7 @@
 
 #include <bitset>
 #include <iostream>
-#include <bitset>
+#include <map>
 #include <tuple>
 
 // TODO: Remove
@@ -44,21 +44,38 @@ namespace usse {
 // For debugging SPIR-V output
 static uint32_t instr_idx = 0;
 
-class USSETranslatorVisitor final {
-public:
-    using instruction_return_type = bool;
+using InstructionResult = boost::optional<Instruction>;
+
+/**
+ * \brief Stage 2 translator.
+ * 
+ * Translates given Instruction struct to SPIR-V.
+*/
+class USSETranslatorVisitorStage2 final {
+private:
+    // SPIR-V emitter
+    spv::Builder &m_b;
+
+    // SPIR-V IDs
+    const SpirvShaderParameters &m_spirv_params;
+
+    // Shader being translated
+    const SceGxmProgram &m_program; // unused
 
     spv::Id type_f32;
     spv::Id type_f32_v[5]; // Starts from 1 ([1] is vec 1)
     spv::Id const_f32[4];
     // spv::Id const_f32_v[5];  // Starts from 1 ([1] is vec 1)
 
-    SpirvReg pa_writeable[100];
+    // SPIR-V inputs are read-only, so we need to write to these temporaries instead
+    // TODO: Figure out actual PA count limit
+    std::unordered_map<uint16_t, SpirvReg> pa_writeable;
 
-    USSETranslatorVisitor() = delete;
-    explicit USSETranslatorVisitor(spv::Builder &_b, const uint64_t &_instr, const SpirvShaderParameters &spirv_params, const SceGxmProgram &program)
+    USSETranslatorVisitorStage2() = delete;
+
+public:
+    explicit USSETranslatorVisitorStage2(spv::Builder &_b, const SpirvShaderParameters &spirv_params, const SceGxmProgram &program)
         : m_b(_b)
-        , m_instr(_instr)
         , m_spirv_params(spirv_params)
         , m_program(program) {
         // Build common type here, so builder won't have to look it up later
@@ -76,6 +93,24 @@ public:
         }
     }
 
+    bool translate(Instruction &inst) {
+        // Set the line for debugging
+        m_b.setLine(usse::instr_idx);
+
+        switch (inst.opcode) {
+        #define REGISTER_TRANSLATION(op, handler) case Opcode::op: return handler(inst)
+        REGISTER_TRANSLATION(VMAD, vmad);
+        REGISTER_TRANSLATION(VPCKF16F32, vpck);
+        REGISTER_TRANSLATION(VPCKF32F32, vpck);
+        REGISTER_TRANSLATION(VMOV, vmov);
+        REGISTER_TRANSLATION(VMUL, vmul);
+        default: break;
+        #undef REGISTER_TRANSLATION
+        }
+
+        return false;
+    }
+
 private:
     //
     // Translation helpers
@@ -89,18 +124,17 @@ private:
 #define END_REPEAT() }
 
     /**
-     * \brief Get a raw SPIR-V variable corresponds to the given bank and register offset.
+     * \brief Get a SPIR-V variable corresponding to the given bank and register offset.
      * 
-     * Beside finding the correspond SPIR-V register bank and returns the correspond SPIR-V variable, this function also
-     * does patching for case like getting a pa0 variable for storage and more.
+     * Beside finding the corresponding SPIR-V register bank and returning the associated SPIR-V variable, this function
+     * does patching for edge cases, like getting a pa0 variable for storage.
      * 
-     * Client should use this function instead of getting raw SPIR-V register bank using get_reg_bank and find the SPIR-V variable
-     * correspond to your USSE register in it.
+     * The translator should use this function instead of getting the raw SPIR-V register bank using get_reg_bank, etc.
      * 
      * \returns True on success.
     */
-    bool get_spirv_reg(const USSE::RegisterBank bank, std::uint32_t reg_offset, std::uint32_t shift_offset, SpirvReg &reg, 
-        std::uint32_t &out_comp_offset, const bool get_for_store = false) {
+    bool get_spirv_reg(USSE::RegisterBank bank, std::uint32_t reg_offset, std::uint32_t shift_offset, SpirvReg &reg,
+        std::uint32_t &out_comp_offset, bool get_for_store) {
         const std::uint32_t original_reg_offset = reg_offset;
 
         if (bank == USSE::RegisterBank::FPINTERNAL) {
@@ -109,11 +143,14 @@ private:
             reg_offset *= 16;
         }
 
-        // If we are getting a PRIMATTR reg, we need to check to see if a writeable one has already been created
-        // If it's, get the writeable one, else proceed.
+        const auto pa_writeable_idx = (reg_offset + shift_offset) / 4;
+
+        // If we are getting a PRIMATTR reg, we need to check whether a writeable one has already been created
+        // If it is, get the writeable one, else proceed
         if (bank == USSE::RegisterBank::PRIMATTR) {
-            if (pa_writeable[(reg_offset + shift_offset) / 4].var_id != spv::NoResult) {
-                reg = pa_writeable[(reg_offset + shift_offset) / 4];
+            decltype(pa_writeable)::iterator pa;
+            if ((pa = pa_writeable.find(pa_writeable_idx)) != pa_writeable.end()) {
+                reg = pa->second;
                 return true;
             }
         }
@@ -121,18 +158,17 @@ private:
         const SpirvVarRegBank &spirv_bank = get_reg_bank(bank);
 
         bool result = spirv_bank.find_reg_at(reg_offset + shift_offset, reg, out_comp_offset);
-        if (!result) {
+        if (!result)
             return false;
-        }
 
         if (bank == USSE::RegisterBank::PRIMATTR && get_for_store) {
-            if (pa_writeable[(reg_offset + shift_offset) / 4].var_id == spv::NoResult) {
-                std::string new_pa_writeable_name = "pa" + std::to_string(reg_offset) + "_patch";
+            if (pa_writeable.count(pa_writeable_idx) == 0) {
+                const std::string new_pa_writeable_name = fmt::format("pa{}_temp", std::to_string(reg_offset));
                 const spv::Id new_pa_writeable = m_b.createVariable(spv::StorageClassPrivate, reg.type_id, new_pa_writeable_name.c_str());
                 m_b.createStore(m_b.createLoad(reg.var_id), new_pa_writeable);
-                
+
                 reg.var_id = new_pa_writeable;
-                pa_writeable[(reg_offset + shift_offset) / 4] = reg;
+                pa_writeable[pa_writeable_idx] = reg;
             }
         }
 
@@ -261,7 +297,7 @@ private:
      * 
      * \returns A copy of given operand
     */
-    spv::Id load(Operand &op, const Imm4 dest_mask, const std::uint8_t offset = 0, bool /* abs */ = false, bool /* neg */ = false) {
+    spv::Id load(Operand &op, const Imm4 dest_mask, const std::uint8_t offset = 0) {
         /*
         // Optimization: Check for constant swizzle and emit it right away
         for (std::uint8_t i = 0; i < 4; i++) {
@@ -284,36 +320,43 @@ private:
         }
 
         // Composite a new vector
-        SpirvReg reg_left;
-        std::uint32_t out_comp_offset;
+        SpirvReg reg_left{};
+        std::uint32_t out_comp_offset{};
 
-        if (!get_spirv_reg(op.bank, op.num, offset, reg_left, out_comp_offset)) {
+        if (!get_spirv_reg(op.bank, op.num, offset, reg_left, out_comp_offset, false)) {
             LOG_ERROR("Can't load register {}", disasm::operand_to_str(op, 0));
             return spv::NoResult;
         }
 
         // Get the next reg, so we can do a bridge
-        SpirvReg reg_right;
-        std::uint32_t temp = 0;
+        SpirvReg reg_right{};
+        std::uint32_t temp{};
 
         // There is no more register to bridge to. For making it valid, just
         // throws in a valid register
         //
         // I haven't think of any edge case, but this should be looked when there is
         // any problems with bridging
-        if (!get_spirv_reg(op.bank, op.num, offset + reg_left.size, reg_right, temp))
+        if (!get_spirv_reg(op.bank, op.num, offset + reg_left.size, reg_right, temp, false))
             reg_right = reg_left;
 
         // Optimization: Bridging (VectorShuffle) or even swizzling is not always necessary
 
-        const bool is_reg_left = out_comp_offset == 0;
-        const bool is_reg_right = out_comp_offset == reg_left.size;
         const bool needs_swizzle = !is_default(op.swizzle, dest_comp_count);
 
         if (!needs_swizzle) {
-            if (is_reg_left && m_b.getNumTypeComponents(reg_left.type_id) == dest_comp_count)
+            const uint32_t reg_left_comp_count = m_b.getNumTypeComponents(reg_left.type_id);
+            const uint32_t reg_right_comp_count = m_b.getNumTypeComponents(reg_right.type_id);
+
+            const bool is_reg_left_comp_count = (reg_left_comp_count == reg_left_comp_count);
+            const bool is_reg_right_comp_count = (reg_right_comp_count == reg_right_comp_count);
+
+            const bool is_reg_left_comp_offset = (out_comp_offset == 0);
+            const bool is_reg_right_comp_offset = (out_comp_offset == reg_left.size);
+
+            if (is_reg_left_comp_offset && is_reg_left_comp_count)
                 return m_b.createLoad(reg_left.var_id);
-            else if (is_reg_right && m_b.getNumTypeComponents(reg_right.type_id) == dest_comp_count)
+            else if (is_reg_right_comp_offset && is_reg_right_comp_count)
                 return m_b.createLoad(reg_right.var_id);
         }
 
@@ -343,7 +386,7 @@ private:
 
         // The source needs to fit in both the dest vector and the total write components must be equal to total source components
         const bool full_length = (total_comp_dest == total_comp_source) && (dest_comp_count == total_comp_source);
-        const bool starts_at_0 = dest_comp_offset == 0;
+        const bool starts_at_0 = (dest_comp_offset == 0);
 
         if (!needs_swizzle && full_length && starts_at_0) {
             m_b.createStore(source, dest_reg.var_id);
@@ -423,32 +466,111 @@ public:
     // Helpers
     //
 
-    // Write pa0 to fragment output color
+    // In non-native frag shaders, GXM's ShaderPatcher API uses some specific PAs as the input color of its blending code
+    // This function imitates that by write pa0 to fragment output color
     // TODO: Is this and our OpenGL blending code enough?
-    void patch_frag_output() {
-        SpirvReg pa0;
-        SpirvReg o0;
+    // TOOD: Is pa0 correct or is there a GXP field or some other logic that determines the PA offfset (+size?) to use
+    void emit_non_native_frag_output() {
+        Operand pa0_operand;
+        pa0_operand.bank = RegisterBank::PRIMATTR;
+        pa0_operand.num = 0;
+        pa0_operand.swizzle = SWIZZLE_CHANNEL_4_DEFAULT;
 
-        std::uint32_t temp = 0;
+        Operand o0_operand;
+        o0_operand.bank = RegisterBank::OUTPUT;
+        o0_operand.num = 0;
+        o0_operand.swizzle = SWIZZLE_CHANNEL_4_DEFAULT;
 
-        if (!get_spirv_reg(RegisterBank::PRIMATTR, 0, 0, pa0, temp, false)) {
-            LOG_ERROR("Can't find pa0 for patching fragment output!");
-            return;
-        }
-
-        if (!get_spirv_reg(RegisterBank::OUTPUT, 0, 0, o0, temp, true)) {
-            LOG_ERROR("Can't find o0 for patching fragment output!");
-            return;
-        }
-
-        m_b.createStore(m_b.createLoad(pa0.var_id), o0.var_id);
+        spv::Id pa0_var = load(pa0_operand, 0xF, 0);
+        store(o0_operand, pa0_var, 0xF, 0);
     }
 
     //
     // Instructions
     //
-    bool vnmad(ExtPredicate pred, bool skipinv, Imm2 src1_swiz_10_11, bool syncstart, Imm1 dest_bank_ext, Imm1 src1_swiz_9, Imm1 src1_bank_ext, Imm1 src2_bank_ext, Imm4 src2_swiz, bool nosched, Imm4 dest_mask, Imm2 src1_mod, Imm1 src2_mod, Imm2 src1_swiz_7_8, Imm2 dest_bank_sel, Imm2 src1_bank_sel, Imm2 src2_bank_sel, Imm6 dest_n, Imm7 src1_swiz_0_6, Imm3 op2, Imm6 src1_n, Imm6 src2_n) {
+    bool vmul(Instruction &inst) {        
+        LOG_DISASM("{:016x}: {}{} {} {} {}", usse::instr_idx, disasm::e_predicate_str(inst.predicate), disasm::opcode_str(inst.opcode)
+            , disasm::operand_to_str(inst.opr.dest, inst.dest_mask), disasm::operand_to_str(inst.opr.src1, inst.dest_mask)
+            , disasm::operand_to_str(inst.opr.src2, inst.dest_mask));
+
+        auto dest_comp_count = dest_mask_to_comp_count(inst.dest_mask);
+
+        spv::Id vsrc1 = load(inst.opr.src1, inst.dest_mask, 0);
+        spv::Id vsrc2 = load(inst.opr.src2, inst.dest_mask, 0);
+
+        if (vsrc1 == spv::NoResult || vsrc2 == spv::NoResult) {
+            LOG_WARN("Could not find a src register");
+            return false;
+        }
+
+        auto mul_result = m_b.createBinOp(spv::OpFMul, type_f32_v[dest_comp_count], vsrc1, 
+            vsrc2);
+
+        store(inst.opr.dest, mul_result, inst.dest_mask, 0);
+        return true;
+    }
+
+    bool vmad(Instruction &inst) {
+        BEGIN_REPEAT(inst.repeat_count, 2)
+        spv::Id vsrc0 = load(inst.opr.src0, inst.dest_mask, repeat_offset);
+        spv::Id vsrc1 = load(inst.opr.src1, inst.dest_mask, repeat_offset);
+        spv::Id vsrc2 = load(inst.opr.src2, inst.dest_mask, repeat_offset);
+
+        if (vsrc0 == spv::NoResult || vsrc1 == spv::NoResult || vsrc2 == spv::NoResult) {
+            return false;
+        }
+
+        auto mul_result = m_b.createBinOp(spv::OpFMul, m_b.getTypeId(vsrc0), vsrc0, vsrc1);
+        auto add_result = m_b.createBinOp(spv::OpFAdd, m_b.getTypeId(mul_result), mul_result, vsrc2);
+
+        store(inst.opr.dest, add_result, inst.dest_mask, repeat_offset);
+        END_REPEAT()
+
+        return true;
+    }
+
+    bool vmov(Instruction &inst) {
+        BEGIN_REPEAT(inst.repeat_count, 2)
+        LOG_DISASM(fmt::format("{:016x}: VMOV {} {}", usse::instr_idx,
+            disasm::operand_to_str(inst.opr.dest, inst.dest_mask, repeat_offset), 
+            disasm::operand_to_str(inst.opr.src1, inst.dest_mask, repeat_offset)));
+
+        spv::Id source = load(inst.opr.src1, inst.dest_mask, repeat_offset);
+        store(inst.opr.dest, source, inst.dest_mask, repeat_offset);
+        END_REPEAT()
+
+        return true;
+    }
+    
+    bool vpck(Instruction &inst) {
+        BEGIN_REPEAT(inst.repeat_count, 2)
+        spv::Id source = load(inst.opr.src1, inst.dest_mask, repeat_offset);
+        store(inst.opr.dest, source, inst.dest_mask, repeat_offset);
+        END_REPEAT()
+
+        return true;
+    }
+};
+
+/**
+ * \brief Stage 1 translator.
+ * 
+ * Translates all fields and decode most of the swizzle, to pack in a single
+ * Instruction struct.
+*/
+class USSETranslatorVisitorStage1 final {
+public:
+    using instruction_return_type = InstructionResult;
+    
+    explicit USSETranslatorVisitorStage1(const std::uint64_t &_instr)
+        : m_instr(_instr) {
+    }
+
+    InstructionResult vnmad(ExtPredicate pred, bool skipinv, Imm2 src1_swiz_10_11, bool syncstart, Imm1 dest_bank_ext, Imm1 src1_swiz_9, Imm1 src1_bank_ext, Imm1 src2_bank_ext, Imm4 src2_swiz, bool nosched, Imm4 dest_mask, Imm2 src1_mod, Imm1 src2_mod, Imm2 src1_swiz_7_8, Imm2 dest_bank_sel, Imm2 src1_bank_sel, Imm2 src2_bank_sel, Imm6 dest_n, Imm7 src1_swiz_0_6, Imm3 op2, Imm6 src1_n, Imm6 src2_n) {
         Instruction inst{};
+        inst.predicate = pred;
+        inst.dest_mask = dest_mask;
+        inst.repeat_count = USSE::RepeatCount::REPEAT_0;
 
         static const Opcode tb_decode_vop_f32[] = {
             Opcode::VMUL,
@@ -460,6 +582,7 @@ public:
             Opcode::VMAX,
             Opcode::VDP,
         };
+
         static const Opcode tb_decode_vop_f16[] = {
             Opcode::VF16MUL,
             Opcode::VF16ADD,
@@ -470,14 +593,12 @@ public:
             Opcode::VF16MAX,
             Opcode::VF16DP,
         };
-        Opcode opcode;
+
         const bool is_32_bit = m_instr & (1ull << 59);
         if (is_32_bit)
-            opcode = tb_decode_vop_f32[op2];
+            inst.opcode = tb_decode_vop_f32[op2];
         else
-            opcode = tb_decode_vop_f16[op2];
-
-        LOG_DISASM("{:016x}: {}{}", m_instr, disasm::e_predicate_str(pred), disasm::opcode_str(opcode));
+            inst.opcode = tb_decode_vop_f16[op2];
 
         // Decode operands
         // TODO: modifiers
@@ -511,30 +632,14 @@ public:
         inst.opr.src2.swizzle = tb_decode_src2_swizzle[src2_swiz];
 
         // TODO: source modifiers
-
-        auto dest_comp_count = dest_mask_to_comp_count(dest_mask);
-
-        // Recompile
-
-        m_b.setLine(usse::instr_idx);
-
-        spv::Id vsrc1 = load(inst.opr.src1, dest_mask, 0);
-        spv::Id vsrc2 = load(inst.opr.src2, dest_mask, 0);
-
-        if (vsrc1 == spv::NoResult || vsrc2 == spv::NoResult) {
-            LOG_WARN("Could not find a src register");
-            return false;
-        }
-
-        auto mul_result = m_b.createBinOp(spv::OpFMul, type_f32_v[dest_comp_count], vsrc1, vsrc2);
-
-        store(inst.opr.dest, mul_result, dest_mask, 0);
-
-        return true;
+        return inst;
     }
 
-    bool vmov(ExtPredicate pred, bool skipinv, bool test_2, Imm1 src2_bank_sel, bool syncstart, Imm1 dest_bank_ext, Imm1 end_or_src0_bank_ext, Imm1 src1_bank_ext, Imm1 src2_bank_ext, MoveType move_type, RepeatCount repeat_count, bool nosched, MoveDataType move_data_type, bool test_1, Imm4 src_swiz, Imm1 src0_bank_sel, Imm2 dest_bank_sel, Imm2 src1_bank_sel, Imm2 src0_comp_sel, Imm4 dest_mask, Imm6 dest_n, Imm6 src0_n, Imm6 src1_n, Imm6 src2_n) {
+    InstructionResult vmov(ExtPredicate pred, bool skipinv, bool test_2, Imm1 src2_bank_sel, bool syncstart, Imm1 dest_bank_ext, Imm1 end_or_src0_bank_ext, Imm1 src1_bank_ext, Imm1 src2_bank_ext, MoveType move_type, RepeatCount repeat_count, bool nosched, MoveDataType move_data_type, bool test_1, Imm4 src_swiz, Imm1 src0_bank_sel, Imm2 dest_bank_sel, Imm2 src1_bank_sel, Imm2 src0_comp_sel, Imm4 dest_mask, Imm6 dest_n, Imm6 src0_n, Imm6 src1_n, Imm6 src2_n) {
         Instruction inst{};
+        inst.predicate = pred;
+        inst.dest_mask = dest_mask;
+        inst.repeat_count = repeat_count;
 
         static const Opcode tb_decode_vmov[] = {
             Opcode::VMOV,
@@ -566,17 +671,17 @@ public:
         // TODO: adjust dest mask if needed
         if (move_data_type != MoveDataType::F32) {
             LOG_WARN("Data type != F32 unsupported");
-            return false;
+            return boost::none;
         }
 
         if (is_conditional) {
             LOG_WARN("Conditional vmov instructions unsupported");
-            return false;
+            return boost::none;
         }
 
         if (inst.opr.dest.bank == RegisterBank::SPECIAL || inst.opr.src0.bank == RegisterBank::SPECIAL || inst.opr.src1.bank == RegisterBank::SPECIAL || inst.opr.src2.bank == RegisterBank::SPECIAL) {
             LOG_WARN("Special regs unsupported");
-            return false;
+            return boost::none;
         }
 
         // if (is_conditional) {
@@ -584,29 +689,21 @@ public:
         //     inst.operands.src2 = decode_src12(src2_n, src2_bank_sel, src2_bank_ext, is_double_regs);
         // }
 
-        disasm_str += fmt::format(" {} {}", disasm::operand_to_str(inst.opr.dest, dest_mask), disasm::operand_to_str(inst.opr.src1, dest_mask));
-        LOG_DISASM(disasm_str);
-
-        // Recompile
-
-        m_b.setLine(usse::instr_idx);
-
-        BEGIN_REPEAT(repeat_count, 2)
-        spv::Id source = load(inst.opr.src1, dest_mask, repeat_offset);
-        store(inst.opr.dest, source, dest_mask, repeat_offset);
-        END_REPEAT()
-
-        return true;
+        return inst;
     }
 
-    bool vpck(ExtPredicate pred, bool skipinv, bool nosched, Imm1 src2_bank_sel, bool syncstart, Imm1 dest_bank_ext, Imm1 end, Imm1 src1_bank_ext, Imm2 src2_bank_ext, RepeatCount repeat_count, Imm3 src_fmt, Imm3 dest_fmt, Imm4 dest_mask, Imm2 dest_bank_sel, Imm2 src1_bank_sel, Imm7 dest_n, Imm2 comp_sel_3, Imm1 scale, Imm2 comp_sel_1, Imm2 comp_sel_2, Imm5 src1_n, Imm1 comp0_sel_bit1, Imm4 src2_n, Imm1 comp_sel_0_bit0) {
+    InstructionResult vpck(ExtPredicate pred, bool skipinv, bool nosched, Imm1 src2_bank_sel, bool syncstart, Imm1 dest_bank_ext, Imm1 end, Imm1 src1_bank_ext, Imm2 src2_bank_ext, RepeatCount repeat_count, Imm3 src_fmt, Imm3 dest_fmt, Imm4 dest_mask, Imm2 dest_bank_sel, Imm2 src1_bank_sel, Imm7 dest_n, Imm2 comp_sel_3, Imm1 scale, Imm2 comp_sel_1, Imm2 comp_sel_2, Imm5 src1_n, Imm1 comp0_sel_bit1, Imm4 src2_n, Imm1 comp_sel_0_bit0) {
         Instruction inst{};
+        inst.predicate = pred;
+        inst.dest_mask = dest_mask;
+        inst.repeat_count = repeat_count;
+        
         const auto FMT_F32 = 6;
 
         // TODO: Only simple mov-like f32 to f32 supported
         // TODO: Seems like decoding for these is wrong?
         if (src_fmt != FMT_F32 || src_fmt != FMT_F32)
-            return true;
+            return inst;
 
         inst.opcode = Opcode::VPCKF32F32;
         std::string disasm_str = fmt::format("{:016x}: {}{}", m_instr, disasm::e_predicate_str(pred), disasm::opcode_str(inst.opcode));
@@ -616,7 +713,7 @@ public:
 
         if (inst.opr.dest.bank == RegisterBank::SPECIAL || inst.opr.src0.bank == RegisterBank::SPECIAL || inst.opr.src1.bank == RegisterBank::SPECIAL || inst.opr.src2.bank == RegisterBank::SPECIAL) {
             LOG_WARN("Special regs unsupported");
-            return false;
+            return boost::none;
         }
 
         Imm2 comp_sel_0 = comp_sel_0_bit0;
@@ -630,22 +727,17 @@ public:
         disasm_str += fmt::format(" {} {}", disasm::operand_to_str(inst.opr.dest, dest_mask), disasm::operand_to_str(inst.opr.src1, dest_mask));
         LOG_DISASM(disasm_str);
 
-        // Recompile
-
-        m_b.setLine(usse::instr_idx);
-
-        BEGIN_REPEAT(repeat_count, 2)
-        spv::Id source = load(inst.opr.src1, dest_mask, repeat_offset);
-        store(inst.opr.dest, source, dest_mask, repeat_offset);
-        END_REPEAT()
-
-        return true;
+        return inst;
     }
 
-    bool vmad(ExtPredicate predicate, bool skipinv, Imm1 gpi1_swizz_extended, Imm1 opcode2, Imm1 dest_use_extended_bank, Imm1 end, Imm1 src0_extended_bank, Imm2 increment_mode, Imm1 gpi0_abs, RepeatCount repeat_count, bool no_sched, Imm4 write_mask, Imm1 src0_neg, Imm1 src0_abs, Imm1 gpi1_neg, Imm1 gpi1_abs, Imm1 gpi0_swizz_extended, Imm2 dest_bank, Imm2 src0_bank, Imm2 gpi0_n, Imm6 dest_n, Imm4 gpi0_swizz, Imm4 gpi1_swizz, Imm2 gpi1_n, Imm1 gpi0_neg, Imm1 src0_swizz_extended, Imm4 src0_swizz, Imm6 src0_n) {
+    InstructionResult vmad(ExtPredicate predicate, bool skipinv, Imm1 gpi1_swizz_extended, Imm1 opcode2, Imm1 dest_use_extended_bank, Imm1 end, Imm1 src0_extended_bank, Imm2 increment_mode, Imm1 gpi0_abs, RepeatCount repeat_count, bool no_sched, Imm4 write_mask, Imm1 src0_neg, Imm1 src0_abs, Imm1 gpi1_neg, Imm1 gpi1_abs, Imm1 gpi0_swizz_extended, Imm2 dest_bank, Imm2 src0_bank, Imm2 gpi0_n, Imm6 dest_n, Imm4 gpi0_swizz, Imm4 gpi1_swizz, Imm2 gpi1_n, Imm1 gpi0_neg, Imm1 src0_swizz_extended, Imm4 src0_swizz, Imm6 src0_n) {
         std::string disasm_str = fmt::format("{:016x}: {}{}", m_instr, disasm::e_predicate_str(predicate), "VMAD");
 
         Instruction inst{};
+
+        inst.predicate = predicate;
+        inst.dest_mask = write_mask;
+        inst.repeat_count = repeat_count;
 
         // Is this VMAD3 or VMAD4, op2 = 0 => vec3
         int type = 2;
@@ -661,6 +753,13 @@ public:
         // GPI0 and GPI1, setup!
         inst.opr.src1.bank = USSE::RegisterBank::FPINTERNAL;
         inst.opr.src1.num = gpi0_n;
+        
+        if (src0_abs)
+            inst.opr.src0.flags |= USSE::RegisterFlags::Absolute;
+
+        if (src0_neg) {
+            inst.opr.src0.flags |= USSE::RegisterFlags::Negative;
+        }
 
         inst.opr.src2.bank = USSE::RegisterBank::FPINTERNAL;
         inst.opr.src2.num = gpi1_n;
@@ -677,52 +776,26 @@ public:
         disasm_str += fmt::format(" {} {} {} {}", disasm::operand_to_str(inst.opr.dest, write_mask), disasm::operand_to_str(inst.opr.src0, write_mask), disasm::operand_to_str(inst.opr.src1, write_mask), disasm::operand_to_str(inst.opr.src2, write_mask));
 
         LOG_DISASM("{}", disasm_str);
-        m_b.setLine(usse::instr_idx);
-
-        // Write mask is a 4-bit immidiate
-        // If a bit is one, a swizzle is active
-        BEGIN_REPEAT(repeat_count, 2)
-        spv::Id vsrc0 = load(inst.opr.src0, write_mask, repeat_offset, src0_abs, src0_neg);
-        spv::Id vsrc1 = load(inst.opr.src1, write_mask, repeat_offset, gpi0_abs, gpi0_neg);
-        spv::Id vsrc2 = load(inst.opr.src2, write_mask, repeat_offset, gpi1_abs, gpi1_neg);
-
-        if (vsrc0 == spv::NoResult || vsrc1 == spv::NoResult || vsrc2 == spv::NoResult) {
-            return false;
-        }
-
-        auto mul_result = m_b.createBinOp(spv::OpFMul, m_b.getTypeId(vsrc0), vsrc0, vsrc1);
-        auto add_result = m_b.createBinOp(spv::OpFAdd, m_b.getTypeId(mul_result), mul_result, vsrc2);
-
-        store(inst.opr.dest, add_result, write_mask, repeat_offset);
-        END_REPEAT()
-
-        return true;
+        
+        return inst;
     }
 
-    bool special(bool special, SpecialCategory category) {
+    InstructionResult special(bool special, SpecialCategory category) {
         usse::instr_idx--;
         usse::instr_idx--; // TODO: Remove?
         LOG_DISASM("{:016x}: SPEC category: {}, special: {}", m_instr, (uint8_t)category, special);
-        return true;
+        return boost::none;
     }
-    bool special_phas() {
+
+    InstructionResult special_phas() {
         usse::instr_idx--;
         LOG_DISASM("{:016x}: PHAS", m_instr);
-        return true;
+        return boost::none;
     }
 
 private:
-    // SPIR-V emitter
-    spv::Builder &m_b;
-
     // Instruction word being translated
     const uint64_t &m_instr;
-
-    // SPIR-V IDs
-    const SpirvShaderParameters &m_spirv_params;
-
-    // Shader being translated
-    const SceGxmProgram &m_program; // unused
 };
 
 } // namespace usse

@@ -33,6 +33,7 @@
 #include <functional>
 #include <iterator>
 #include <map>
+#include <fstream>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -40,7 +41,8 @@
 using boost::optional;
 using SpirvCode = std::vector<uint32_t>;
 
-static constexpr bool LOG_SHADER_DEBUG = true;
+static constexpr bool LOG_SHADER_CODE = true;
+static constexpr bool DUMP_SPIRV_BINARIES = false;
 
 namespace shader {
 
@@ -48,7 +50,7 @@ namespace shader {
 // * Prototypes *
 // **************
 
-spv::Id get_type_fallback(spv::Builder &b);
+static spv::Id get_type_fallback(spv::Builder &b);
 
 // ******************
 // * Helper structs *
@@ -202,7 +204,7 @@ static void sanitize_variable_name(std::string &var_name) {
 spv::StorageClass reg_type_to_spv_storage_class(USSE::RegisterBank reg_type) {
     switch (reg_type) {
     case USSE::RegisterBank::TEMP:
-        return spv::StorageClassFunction;
+        return spv::StorageClassPrivate;
     case USSE::RegisterBank::PRIMATTR:
         return spv::StorageClassInput;
     case USSE::RegisterBank::OUTPUT:
@@ -229,7 +231,7 @@ spv::StorageClass reg_type_to_spv_storage_class(USSE::RegisterBank reg_type) {
     return spv::StorageClassMax;
 }
 
-static spv::Id create_variable(spv::Builder &b, SpirvShaderParameters &parameters, std::string &name, USSE::RegisterBank reg_type, uint32_t size, spv::Id type
+static spv::Id create_spirv_var_reg(spv::Builder &b, SpirvShaderParameters &parameters, std::string &name, USSE::RegisterBank reg_type, uint32_t size, spv::Id type
     , const spv::StorageClass *force_storage = nullptr) {
     sanitize_variable_name(name);
 
@@ -280,7 +282,7 @@ static spv::Id create_struct(spv::Builder &b, SpirvShaderParameters &parameters,
     }
 
     // TODO: Size doesn't make sense here, so just use 1
-    const spv::Id struct_var_id = create_variable(b, parameters, param_struct.name, param_struct.reg_type, 1, struct_type_id);
+    const spv::Id struct_var_id = create_spirv_var_reg(b, parameters, param_struct.name, param_struct.reg_type, 1, struct_type_id);
 
     param_struct.clear();
     return struct_var_id;
@@ -292,7 +294,7 @@ static spv::Id create_param_sampler(spv::Builder &b, SpirvShaderParameters &para
     spv::Id sampled_image_type = b.makeSampledImageType(image_type);
     std::string name = gxp::parameter_name_raw(parameter);
 
-    return create_variable(b, parameters, name, USSE::RegisterBank::SECATTR, 2, sampled_image_type);
+    return create_spirv_var_reg(b, parameters, name, USSE::RegisterBank::SECATTR, 2, sampled_image_type);
 }
 
 static void create_vertex_outputs(spv::Builder &b, SpirvShaderParameters &parameters, const SceGxmProgram &program) {
@@ -335,7 +337,7 @@ static void create_vertex_outputs(spv::Builder &b, SpirvShaderParameters &parame
             VertexProgramOutputProperties properties = vertex_properties_map.at(vo_typed);
 
             const spv::Id out_type = b.makeVectorType(b.makeFloatType(32), properties.component_count);
-            const spv::Id out_var = create_variable(b, parameters, properties.name, USSE::RegisterBank::OUTPUT, properties.component_count, out_type);
+            const spv::Id out_var = create_spirv_var_reg(b, parameters, properties.name, USSE::RegisterBank::OUTPUT, properties.component_count, out_type);
 
             // TODO: More decorations needed?
             if (vo == SCE_GXM_VERTEX_PROGRAM_OUTPUT_POSITION)
@@ -388,7 +390,7 @@ static void create_fragment_inputs(spv::Builder &b, SpirvShaderParameters &param
             FragmentProgramInputProperties properties = vertex_properties_map.at(vo_typed);
 
             const spv::Id in_type = b.makeVectorType(b.makeFloatType(32), properties.component_count);
-            const spv::Id in_var = create_variable(b, parameters, properties.name, USSE::RegisterBank::PRIMATTR, properties.component_count, in_type);
+            const spv::Id in_var = create_spirv_var_reg(b, parameters, properties.name, USSE::RegisterBank::PRIMATTR, properties.component_count, in_type);
         }
     }*/
 
@@ -453,7 +455,7 @@ static void create_fragment_inputs(spv::Builder &b, SpirvShaderParameters &param
             }
 
             const int num_comp = ((descriptor->attribute_info >> 22) & 3) + 1;
-            const auto spv_var = create_variable(b, parameters, pa_name, USSE::RegisterBank::PRIMATTR,
+            const auto spv_var = create_spirv_var_reg(b, parameters, pa_name, USSE::RegisterBank::PRIMATTR,
                 ((descriptor->size >> 4) & 3) + 1, b.makeVectorType(b.makeFloatType(32), num_comp));
 
             LOG_TRACE("pa{} = ({}{}) {}", pa_offset, pa_type, num_comp, pa_name);
@@ -544,7 +546,7 @@ static void create_fragment_inputs(spv::Builder &b, SpirvShaderParameters &param
             // Size of this extra pa occupied
             // Force this to be PRIVATE
             spv::StorageClass texture_query_storage = spv::StorageClassPrivate;
-            query_call.dest = create_variable(b, parameters, texture_query_var_name, USSE::RegisterBank::PRIMATTR, ((descriptor->size >> 6) & 3) + 1,
+            query_call.dest = create_spirv_var_reg(b, parameters, texture_query_var_name, USSE::RegisterBank::PRIMATTR, ((descriptor->size >> 6) & 3) + 1,
                 b.makeVectorType(b.makeFloatType(32), num_component), &texture_query_storage);
 
             if (coords[possibly_coord_num] == spv::NoResult) {
@@ -572,7 +574,7 @@ static void create_fragment_output(spv::Builder &b, SpirvShaderParameters &param
 
     std::string frag_color_name = "out_color";
     const spv::Id frag_color_type = b.makeVectorType(b.makeFloatType(32), 4);
-    const spv::Id frag_color_var = create_variable(b, parameters, frag_color_name, USSE::RegisterBank::OUTPUT, 4, frag_color_type);
+    const spv::Id frag_color_var = create_spirv_var_reg(b, parameters, frag_color_name, USSE::RegisterBank::OUTPUT, 4, frag_color_type);
 
     b.addDecoration(frag_color_var, spv::DecorationLocation, 0);
 
@@ -653,7 +655,7 @@ static SpirvShaderParameters create_parameters(spv::Builder &b, NonDependentText
                         var_elem_name = var_name;
                     else
                         var_elem_name = fmt::format("{}_{}", var_name, p);
-                    create_variable(b, spv_params, var_elem_name, param_reg_type, parameter.component_count, param_type);
+                    create_spirv_var_reg(b, spv_params, var_elem_name, param_reg_type, parameter.component_count, param_type);
                 }
             }
             break;
@@ -694,7 +696,7 @@ static SpirvShaderParameters create_parameters(spv::Builder &b, NonDependentText
     for (auto i = 0; i < program.temp_reg_count1; i++) {
         auto name = fmt::format("r{}", i);
         auto type = b.makeVectorType(b.makeFloatType(32), 4); // TODO: Figure out correct type
-        create_variable(b, spv_params, name, USSE::RegisterBank::TEMP, 4, type);
+        create_spirv_var_reg(b, spv_params, name, USSE::RegisterBank::TEMP, 4, type);
     }
 
     // Create internal reg vars
@@ -702,7 +704,7 @@ static SpirvShaderParameters create_parameters(spv::Builder &b, NonDependentText
         auto name = fmt::format("i{}", i);
         // TODO: these are actually 128 bits long
         auto type = b.makeVectorType(b.makeFloatType(32), 4); // TODO: Figure out correct type
-        create_variable(b, spv_params, name, USSE::RegisterBank::FPINTERNAL, 16, type);
+        create_spirv_var_reg(b, spv_params, name, USSE::RegisterBank::FPINTERNAL, 16, type);
     }
 
     // If this is a non-native color fragment shader (uses configurable blending, doesn't write to color buffer directly):
@@ -713,11 +715,11 @@ static SpirvShaderParameters create_parameters(spv::Builder &b, NonDependentText
         const auto missing_primary_attrs = program.primary_reg_count - spv_params.ins.size();
 
         if (missing_primary_attrs > 2) {
-            LOG_ERROR("missing primary attrs are > 2");
+            LOG_ERROR("missing primary attributes: {}", missing_primary_attrs);
         } else if (missing_primary_attrs > 0) {
             const auto pa_type = b.makeVectorType(b.makeFloatType(32), missing_primary_attrs * 2);
             std::string pa_name = "pa0_blend";
-            create_variable(b, spv_params, pa_name, USSE::RegisterBank::PRIMATTR, missing_primary_attrs * 2, pa_type); // TODO: * 2 is a hack because we don't yet support f16
+            create_spirv_var_reg(b, spv_params, pa_name, USSE::RegisterBank::PRIMATTR, missing_primary_attrs * 2, pa_type); // TODO: * 2 is a hack because we don't yet support f16
         }
     }
 
@@ -882,8 +884,14 @@ static SpirvCode convert_gxp_to_spirv(const SceGxmProgram &program, const std::s
 
     b.dump(spirv);
 
-    if (LOG_SHADER_DEBUG || force_shader_debug) {
-        dump_spirv_disasm(b);
+    if (LOG_SHADER_CODE || force_shader_debug)
+        spirv_disasm_print(spirv);
+
+    if (DUMP_SPIRV_BINARIES) {
+        // TODO: use base path host var
+        std::ofstream spirv_dump(shader_hash + ".spv", std::ios::binary);
+        spirv_dump.write((char*)&spirv, spirv.size() * sizeof(uint32_t));
+        spirv_dump.close();
     }
 
     return spirv;
@@ -910,11 +918,9 @@ static std::string convert_spirv_to_glsl(SpirvCode spirv_binary) {
 // * Functions (utility) *
 // ***********************
 
-void dump_spirv_disasm(const spv::Builder &b) {
-    std::vector<uint32_t> spirv;
+void spirv_disasm_print(const std::vector<unsigned int>& spirv_binary) {
     std::stringstream spirv_disasm;
-    b.dump(spirv);
-    spv::Disassemble(spirv_disasm, spirv);
+    spv::Disassemble(spirv_disasm, spirv_binary);
     LOG_DEBUG("SPIR-V Disassembly:\n{}", spirv_disasm.str());
 }
 
@@ -927,7 +933,7 @@ std::string convert_gxp_to_glsl(const SceGxmProgram &program, const std::string 
 
     const auto source = convert_spirv_to_glsl(spirv_binary);
 
-    if (LOG_SHADER_DEBUG || force_shader_debug)
+    if (LOG_SHADER_CODE || force_shader_debug)
         LOG_DEBUG("Generated GLSL:\n{}", source);
 
     return source;

@@ -206,7 +206,6 @@ struct SceGxmProgramVertexOutput {
     std::uint32_t vertex_outputs2; // includes texcoord outputs
 };
 #pragma pack(pop)
-
 static_assert(sizeof(SceGxmProgramVertexOutput) == 24);
 
 struct SceGxmProgramAttributeDescriptor {

@@ -287,7 +287,7 @@ private:
 
         for (std::size_t i = 0; i < constant_queue.size(); i++) {
             shuff_result = m_b.createOp(spv::OpVectorInsertDynamic, shuff_type,
-                { shuff_result, constant_queue[i].constant, constant_queue[i].index });
+                { shuff_result, constant_queue[i].constant, m_b.makeIntConstant(constant_queue[i].index) });
         }
 
         return shuff_result;

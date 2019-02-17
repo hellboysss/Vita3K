@@ -304,29 +304,29 @@ static void create_vertex_outputs(spv::Builder &b, SpirvShaderParameters &parame
 
     // TODO: Verify component counts
     static const VertexProgramOutputPropertiesMap vertex_properties_map = {
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_POSITION, "out_Position", 4),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_FOG, "out_Fog", 4),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_COLOR0, "out_Color0", 4),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_COLOR1, "out_Color1", 4),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD0, "out_TexCoord0", 2),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD1, "out_TexCoord1", 2),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD2, "out_TexCoord2", 2),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD3, "out_TexCoord3", 2),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD4, "out_TexCoord4", 2),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD5, "out_TexCoord5", 2),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD6, "out_TexCoord6", 2),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD7, "out_TexCoord7", 2),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD8, "out_TexCoord8", 2),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD9, "out_TexCoord9", 2),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_PSIZE, "out_Psize", 1),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP0, "out_Clip0", 4),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP1, "out_Clip1", 4),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP2, "out_Clip2", 4),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP3, "out_Clip3", 4),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP4, "out_Clip4", 4),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP5, "out_Clip5", 4),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP6, "out_Clip6", 4),
-        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP7, "out_Clip7", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_POSITION, "sgx_Position", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_FOG, "sgx_Fog", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_COLOR0, "sgx_Color0", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_COLOR1, "sgx_Color1", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD0, "sgx_TexCoord0", 2),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD1, "sgx_TexCoord1", 2),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD2, "sgx_TexCoord2", 2),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD3, "sgx_TexCoord3", 2),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD4, "sgx_TexCoord4", 2),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD5, "sgx_TexCoord5", 2),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD6, "sgx_TexCoord6", 2),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD7, "sgx_TexCoord7", 2),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD8, "sgx_TexCoord8", 2),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_TEXCOORD9, "sgx_TexCoord9", 2),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_PSIZE, "sgx_Psize", 1),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP0, "sgx_Clip0", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP1, "sgx_Clip1", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP2, "sgx_Clip2", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP3, "sgx_Clip3", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP4, "sgx_Clip4", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP5, "sgx_Clip5", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP6, "sgx_Clip6", 4),
+        set_property(SCE_GXM_VERTEX_PROGRAM_OUTPUT_CLIP7, "sgx_Clip7", 4),
     };
 
     const SceGxmVertexProgramOutputs vertex_outputs = gxp::get_vertex_outputs(program);
@@ -395,20 +395,20 @@ static void create_fragment_inputs(spv::Builder &b, SpirvShaderParameters &param
     }*/
 
     static const std::unordered_map<std::uint32_t, std::string> name_map = {
-        { 0xD000, "in_Position" },
-        { 0xC000,  "in_Fog" },
-        { 0xA000,  "in_Color0" },
-        { 0xB000,  "in_Color1" },
-        { 0x0,  "in_TexCoord0" },
-        { 0x1000,  "in_TexCoord1" },
-        { 0x2000,  "in_TexCoord2" },
-        { 0x3000,  "in_TexCoord3" },
-        { 0x4000,  "in_TexCoord4" },
-        { 0x5000,  "in_TexCoord5" },
-        { 0x6000,  "in_TexCoord6" },
-        { 0x7000,  "in_TexCoord7" },
-        { 0x8000,  "in_TexCoord8" },
-        { 0x9000,  "in_TexCoord9" },
+        { 0xD000, "sgx_Position" },
+        { 0xC000,  "sgx_Fog" },
+        { 0xA000,  "sgx_Color0" },
+        { 0xB000,  "sgx_Color1" },
+        { 0x0,  "sgx_TexCoord0" },
+        { 0x1000,  "sgx_TexCoord1" },
+        { 0x2000,  "sgx_TexCoord2" },
+        { 0x3000,  "sgx_TexCoord3" },
+        { 0x4000,  "sgx_TexCoord4" },
+        { 0x5000,  "sgx_TexCoord5" },
+        { 0x6000,  "sgx_TexCoord6" },
+        { 0x7000,  "sgx_TexCoord7" },
+        { 0x8000,  "sgx_TexCoord8" },
+        { 0x9000,  "sgx_TexCoord9" },
     };
 
     // Both vertex output and this struct should stay in a larger varying struct    
@@ -433,7 +433,7 @@ static void create_fragment_inputs(spv::Builder &b, SpirvShaderParameters &param
             std::string pa_name;
 
             if (input_id & 0x40000000) {
-                pa_name = "in_SpriteCoord";
+                pa_name = "sgx_SpriteCoord";
             } else {
                 pa_name = name_map.at(input_id);
             }
@@ -552,7 +552,7 @@ static void create_fragment_inputs(spv::Builder &b, SpirvShaderParameters &param
             if (coords[possibly_coord_num] == spv::NoResult) {
                 // Create an in variable
                 // TODO: this really right ?
-                std::string coord_name = "input_TexCoord";
+                std::string coord_name = "sgx_TexCoord";
                 coord_name += std::to_string(possibly_coord_num);
 
                 coords[possibly_coord_num] = b.createVariable(spv::StorageClassInput, 
@@ -572,7 +572,7 @@ static void create_fragment_inputs(spv::Builder &b, SpirvShaderParameters &param
 static void create_fragment_output(spv::Builder &b, SpirvShaderParameters &parameters, const SceGxmProgram &program) {
     // HACKY: We assume output size and format
 
-    std::string frag_color_name = "out_color";
+    std::string frag_color_name = "sgx_colorFinal";
     const spv::Id frag_color_type = b.makeVectorType(b.makeFloatType(32), 4);
     const spv::Id frag_color_var = create_spirv_var_reg(b, parameters, frag_color_name, USSE::RegisterBank::OUTPUT, 4, frag_color_type);
 

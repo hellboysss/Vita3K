@@ -94,6 +94,12 @@ std::string reg_to_str(USSE::RegisterBank bank, uint32_t reg_num) {
         break;
     }
 
+    case USSE::RegisterBank::IMMEDIATE: {
+        // TODO
+        opstr += "imm";
+        break;
+    }
+
     default: {
         assert(false);
         break;
@@ -112,7 +118,7 @@ std::string operand_to_str(Operand op, Imm4 write_mask, std::uint32_t shift) {
     std::string opstr = reg_to_str(op.bank, op.num + shift);
 
     if (write_mask != 0) {
-        opstr += "." + swizzle_to_str<4>(op.swizzle, write_mask, shift);
+        opstr += "." + swizzle_to_str<4>(op.swizzle, write_mask);
     }
 
     return opstr;

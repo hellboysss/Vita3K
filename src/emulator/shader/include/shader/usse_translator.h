@@ -99,11 +99,13 @@ public:
 
         switch (inst.opcode) {
         #define REGISTER_TRANSLATION(op, handler) case Opcode::op: return handler(inst)
-        REGISTER_TRANSLATION(VMAD, vmad);
+        REGISTER_TRANSLATION(VMAD4, vmad);
+        REGISTER_TRANSLATION(VMAD3, vmad);
         REGISTER_TRANSLATION(VPCKF16F32, vpck);
         REGISTER_TRANSLATION(VPCKF32F32, vpck);
         REGISTER_TRANSLATION(VMOV, vmov);
         REGISTER_TRANSLATION(VMUL, vmul);
+        REGISTER_TRANSLATION(VF16MUL, vmul);
         default: break;
         #undef REGISTER_TRANSLATION
         }
@@ -348,8 +350,8 @@ private:
             const uint32_t reg_left_comp_count = m_b.getNumTypeComponents(reg_left.type_id);
             const uint32_t reg_right_comp_count = m_b.getNumTypeComponents(reg_right.type_id);
 
-            const bool is_reg_left_comp_count = (reg_left_comp_count == reg_left_comp_count);
-            const bool is_reg_right_comp_count = (reg_right_comp_count == reg_right_comp_count);
+            const bool is_reg_left_comp_count = (reg_left_comp_count == dest_comp_count);
+            const bool is_reg_right_comp_count = (reg_right_comp_count == dest_comp_count);
 
             const bool is_reg_left_comp_offset = (out_comp_offset == 0);
             const bool is_reg_right_comp_offset = (out_comp_offset == reg_left.size);
@@ -741,9 +743,11 @@ public:
 
         // Is this VMAD3 or VMAD4, op2 = 0 => vec3
         int type = 2;
+        inst.opcode = Opcode::VMAD4;
 
         if (opcode2 == 0) {
             type = 1;
+            inst.opcode = Opcode::VMAD3;
         }
 
         // Double regs always true for src0, dest

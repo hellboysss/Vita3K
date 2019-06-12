@@ -22,6 +22,7 @@ add_library(
 	src/disassembly_dialog.cpp
 	src/about_dialog.cpp
 	src/shader_editor_dialog.cpp
+	src/trophy_unlocked.cpp
 )
 
 target_include_directories(gui PUBLIC include)

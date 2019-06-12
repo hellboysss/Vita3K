@@ -221,6 +221,27 @@ void load_game_background(HostState &host, const std::string &title_id) {
     stbi_image_free(data);
 }
 
+std::uint32_t load_image(HostState &host, const char *data, const std::size_t size) {
+    int width;
+    int height;
+
+    stbi_uc *img_data = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(data), size, &width, &height,
+        nullptr, STBI_rgb_alpha);
+    
+    if (!data) {
+        return static_cast<std::uint32_t>(-1);
+    }
+
+    const auto handle = load_texture(width, height, img_data);
+    stbi_image_free(img_data);
+
+    return handle;
+}
+
+void destroy_image(const std::uint32_t obj) {
+    glDeleteTextures(1, &obj);
+}
+
 void init(HostState &host) {
     ImGui::CreateContext();
     ImGui_ImplSdlGL3_Init(host.window.get());
@@ -230,6 +251,14 @@ void init(HostState &host) {
     init_icons(host);
     if (!host.cfg.background_image.empty())
         init_background(host, host.cfg.background_image);
+
+    HostState *host_pointer = &host;
+
+    // Initialize trophy callback
+    host.np.trophy_state.trophy_unlock_callback = [host_pointer](NpTrophyUnlockCallbackData &callback_data) {
+        const std::lock_guard<std::mutex> guard(host_pointer->gui.trophy_unlock_display_requests_access_mutex);
+        host_pointer->gui.trophy_unlock_display_requests.push(std::move(callback_data));
+    };
 }
 
 void draw_begin(HostState &host) {

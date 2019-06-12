@@ -22,8 +22,9 @@ src/allocations_dialog.cpp
 src/disassembly_dialog.cpp
 src/about_dialog.cpp
 src/shader_editor_dialog.cpp
+src/trophy_unlocked.cpp
 )
 
 target_include_directories(gui PUBLIC ${PROJECT_SOURCE_DIR}/src/emulator include)
-target_link_libraries(gui PUBLIC sdl2 stb imgui glutil host kernel cpu util dialog shader)
+target_link_libraries(gui PUBLIC sdl2 stb imgui glutil host kernel cpu util np dialog shader)
 target_link_libraries(gui PRIVATE app)

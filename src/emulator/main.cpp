@@ -105,7 +105,7 @@ int main(int argc, char *argv[]) {
         app::error_dialog("Host initialisation failed.", host.window.get());
         return HostInitFailed;
     }
-    
+
     gui::init(host);
 
     auto discord_rich_presence_old = host.cfg.discord_rich_presence;
@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
         gui::draw_begin(host);
         gui::draw_common_dialog(host);
         gui::draw_trophies_unlocked(host);
-        
+
         if (host.display.imgui_render) {
             gui::draw_ui(host);
         }

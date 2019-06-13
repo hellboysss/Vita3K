@@ -251,9 +251,9 @@ std::uint32_t load_image(GuiState &gui, const char *data, const std::size_t size
     int width;
     int height;
 
-    stbi_uc *img_data = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(data), size, &width, &height,
+    stbi_uc *img_data = stbi_load_from_memory(reinterpret_cast<const stbi_uc *>(data), size, &width, &height,
         nullptr, STBI_rgb_alpha);
-    
+
     if (!data) {
         return static_cast<std::uint32_t>(-1);
     }

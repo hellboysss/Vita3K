@@ -17,13 +17,11 @@
 
 #pragma once
 
-#include <host/state.h>
-
-#include <SDL.h>
-
 #include <string>
+#include <vector>
 
 struct GuiState;
+struct HostState;
 
 namespace gui {
 

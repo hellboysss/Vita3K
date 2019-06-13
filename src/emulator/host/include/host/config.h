@@ -54,4 +54,5 @@ struct Config {
     float background_alpha = 0.300f;
     int icon_size = 64;
     bool discord_rich_presence = true;
+    std::string online_id;
 };

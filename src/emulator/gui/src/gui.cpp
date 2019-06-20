@@ -252,12 +252,10 @@ void init(HostState &host) {
     if (!host.cfg.background_image.empty())
         init_background(host, host.cfg.background_image);
 
-    HostState *host_pointer = &host;
-
     // Initialize trophy callback
-    host.np.trophy_state.trophy_unlock_callback = [host_pointer](NpTrophyUnlockCallbackData &callback_data) {
-        const std::lock_guard<std::mutex> guard(host_pointer->gui.trophy_unlock_display_requests_access_mutex);
-        host_pointer->gui.trophy_unlock_display_requests.push(std::move(callback_data));
+    host.np.trophy_state.trophy_unlock_callback = [&host](NpTrophyUnlockCallbackData &callback_data) {
+        const std::lock_guard<std::mutex> guard(host.gui.trophy_unlock_display_requests_access_mutex);
+        host.gui.trophy_unlock_display_requests.push(std::move(callback_data));
     };
 }
 

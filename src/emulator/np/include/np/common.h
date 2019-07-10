@@ -24,7 +24,11 @@
 namespace emu::np {
 
 struct CommunicationID {
+<<<<<<< HEAD
     char data[9] = { 'D', 'E', 'A', 'D', 'B', 'E', 'E', 'F', '0' };
+=======
+    char data[9];
+>>>>>>> e51b91d9b40e52a2be9925c69732b46979dc8b23
     char term;
     std::uint8_t num;
     char dummy;

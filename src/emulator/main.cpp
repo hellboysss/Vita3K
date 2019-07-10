@@ -146,9 +146,16 @@ int main(int argc, char *argv[]) {
 
     while (handle_events(host)) {
         gl_renderer.render(host);
+<<<<<<< HEAD
         gui::draw_begin(gui, host);
         gui::draw_common_dialog(gui, host);
         gui::draw_trophies_unlocked(gui);
+=======
+        gui::draw_begin(host);
+        gui::draw_common_dialog(host);
+        gui::draw_trophies_unlocked(host);
+
+>>>>>>> e51b91d9b40e52a2be9925c69732b46979dc8b23
         if (host.display.imgui_render) {
             gui::draw_ui(gui, host);
         }

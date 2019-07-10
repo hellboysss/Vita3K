@@ -136,8 +136,4 @@ const std::uint32_t TRPFile::search_file(const char *name) {
     return static_cast<std::uint32_t>(-1);
 }
 
-<<<<<<< HEAD
 } // namespace emu::np::trophy
-=======
-} // namespace emu::np::trophy
->>>>>>> e51b91d9b40e52a2be9925c69732b46979dc8b23

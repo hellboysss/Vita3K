@@ -28,6 +28,7 @@
 #include <io/state.h>
 #include <kernel/state.h>
 #include <net/state.h>
+#include <ngs/state.h>
 #include <nids/types.h>
 #include <np/state.h>
 #include <renderer/state.h>
@@ -78,6 +79,7 @@ struct HostState {
     bool renderer_focused;
     IOState io;
     NetState net;
+    emu::ngs::State ngs;
     NpState np;
     DisplayState display;
     DialogState common_dialog;
